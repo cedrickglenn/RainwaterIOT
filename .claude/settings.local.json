@@ -1,0 +1,8 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(export PATH=\"$HOME/.platformio/penv/bin:$HOME/.local/bin:$PATH\")",
+      "Bash(pio run:*)"
+    ]
+  }
+}
