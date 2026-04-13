@@ -131,10 +131,20 @@ void sensors_init()
     // Attach interrupt on the rising edge of each pulse.
     flowSensor.begin(sensors_flowISR);
 
-    // Temperature buses
-    tempC2.begin();
-    tempC5.begin();
-    tempC6.begin();
+    // Temperature buses — disable blocking wait so requestTemperatures() returns
+    // immediately (conversion happens in the sensor's internal circuit over ~750ms).
+    // We fire a request at the END of each sensors_readAll() and read the result
+    // at the START of the next call — by then SENSOR_READ_INTERVAL_MS (1 s) has
+    // elapsed, well past the 750ms conversion window.
+    tempC2.begin(); tempC2.setWaitForConversion(false);
+    tempC5.begin(); tempC5.setWaitForConversion(false);
+    tempC6.begin(); tempC6.setWaitForConversion(false);
+
+    // Fire the first conversion so the very first sensors_readAll() call (1+ s
+    // after setup) returns valid temperature values rather than DEVICE_DISCONNECTED.
+    tempC2.requestTemperatures();
+    tempC5.requestTemperatures();
+    tempC6.requestTemperatures();
 
     // SUGGESTION: Read each ultrasonic sensor once here and print the
     //             result to Serial.  If a sensor returns 0 or > 400 cm,
@@ -145,6 +155,16 @@ void sensors_init()
 // ─────────────────────────────────────────────────────────────────────────
 void sensors_readAll(SensorData* data)
 {
+    // ── Temperature — read results of the PREVIOUS non-blocking request ─
+    // requestTemperatures() was called at the end of the last cycle (or in
+    // sensors_init() for the very first call).  The 750ms conversion is
+    // complete well within the 1000ms SENSOR_READ_INTERVAL_MS, so these
+    // values are always fresh.  Reading first removes 2250ms of blocking
+    // that previously locked out the Mega's command-receive loop.
+    data->tempC2 = cal_applyTemp(0, tempC2.getTempCByIndex(0));
+    data->tempC5 = cal_applyTemp(1, tempC5.getTempCByIndex(0));
+    data->tempC6 = cal_applyTemp(2, tempC6.getTempCByIndex(0));
+
     // ── Flow rate ───────────────────────────────────────────────────
     flowSensor.read();
     lastFlowRate   = flowSensor.getFlowRate_m();
@@ -159,29 +179,25 @@ void sensors_readAll(SensorData* data)
     data->levelC5 = cal_applyLevel(3, readUltrasonicMedian(usC5));
     data->levelC6 = cal_applyLevel(4, readUltrasonicMedian(usC6));
 
-    // ── Container 2 water quality (raw rainwater, post-first-flush) ────
-    tempC2.requestTemperatures();
-    data->tempC2      = cal_applyTemp(0, tempC2.getTempCByIndex(0));
+    // ── pH & turbidity (fast analog reads — no blocking) ────────────
     data->turbidityC2 = readTurbidityNTU(TURB_C2_PIN, 0);
-
     lastVoltageC2     = analogRead(PH_C2_PIN) / 1024.0f * 5000.0f;
     data->phC2        = cal_applyPH(0, lastVoltageC2);
 
-    // ── Container 5 water quality ───────────────────────────────────
-    tempC5.requestTemperatures();
-    data->tempC5      = cal_applyTemp(1, tempC5.getTempCByIndex(0));
     data->turbidityC5 = readTurbidityNTU(TURB_C5_PIN, 1);
-
     lastVoltageC5     = analogRead(PH_C5_PIN) / 1024.0f * 5000.0f;
     data->phC5        = cal_applyPH(1, lastVoltageC5);
 
-    // ── Container 6 water quality ───────────────────────────────────
-    tempC6.requestTemperatures();
-    data->tempC6      = cal_applyTemp(2, tempC6.getTempCByIndex(0));
     data->turbidityC6 = readTurbidityNTU(TURB_C6_PIN, 2);
-
     lastVoltageC6     = analogRead(PH_C6_PIN) / 1024.0f * 5000.0f;
     data->phC6        = cal_applyPH(2, lastVoltageC6);
+
+    // ── Fire next temperature conversion (non-blocking, ~1ms) ───────
+    // Results will be ready in 750ms — well before the next call at
+    // SENSOR_READ_INTERVAL_MS (1000ms).
+    tempC2.requestTemperatures();
+    tempC5.requestTemperatures();
+    tempC6.requestTemperatures();
 
     // SUGGESTION: Add sanity checks here.  For example:
     //   if (data->levelC2 == 0 || data->levelC2 > 400)
