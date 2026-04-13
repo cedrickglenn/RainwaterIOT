@@ -22,5 +22,5 @@ void logEvent(const char* level, const char* category, const String& message)
 
     Serial.println(frame + message);
     Serial2.println(frame + message);
-    Serial1.println(frame + "[mega] " + message);
+    Serial1.println(frame + "[MEGA] " + message);
 }

@@ -253,26 +253,28 @@ static void processCommand(const char* cmd)
             snprintf(ack, sizeof(ack), "VALVE,%s,ERR", label ? label : "?");
             Serial.print(F("[Comms] Unknown valve: "));
             Serial.println(label ? label : "?");
+            sendAck(ack);
             logEvent(LOG_ERROR, LOG_CAT_ACTUATOR,
-                     String(label ? label : "?") + " failed to open");
+                     String(label ? label : "?") + " unknown — command rejected");
         } else {
             bool opening = (strncmp(action, "ON", 2) == 0);
             if (opening) {
                 valve_open(pin);
-                logEvent(LOG_INFO, LOG_CAT_ACTUATOR, String(label) + " opened");
             } else {
                 valve_close(pin);
-                logEvent(LOG_INFO, LOG_CAT_ACTUATOR, String(label) + " closed");
             }
             snprintf(ack, sizeof(ack), "VALVE,%s,OK", label);
             Serial.print(F("[Comms] Valve "));
             Serial.print(label);
             Serial.print(' ');
             Serial.println(action);
+            // ACK is sent BEFORE logEvent so it reaches the ESP32 drain window
+            // ahead of the log frames — log frames in the TX buffer ahead of the
+            // ACK were the root cause of the "No ACK" timeout warnings.
+            sendAck(ack);
             logEvent(LOG_INFO, LOG_CAT_ACTUATOR,
-                     String(label) + (opening ? " confirmed open" : " confirmed closed"));
+                     String(label) + (opening ? " opened" : " closed"));
         }
-        sendAck(ack);
     }
     // ── Manual pump control ──────────────────────────────────────────
     //    Format: C,PUMP,Pn,ON|OFF   e.g. C,PUMP,P2,ON
@@ -296,24 +298,27 @@ static void processCommand(const char* cmd)
             snprintf(ack, sizeof(ack), "PUMP,%s,ERR", label ? label : "?");
             Serial.print(F("[Comms] Unknown pump: "));
             Serial.println(label ? label : "?");
+            sendAck(ack);
             logEvent(LOG_ERROR, LOG_CAT_PUMP,
                      String(label ? label : "?") + " command failed");
         } else {
-            if (strncmp(action, "ON", 2) == 0) {
+            bool starting = (strncmp(action, "ON", 2) == 0);
+            if (starting) {
                 delay(100);   // let valve pressure equalise before starting pump
                 pump_start(pin);
-                logEvent(LOG_INFO, LOG_CAT_PUMP, String(label) + " started");
             } else {
                 pump_stop(pin);
-                logEvent(LOG_INFO, LOG_CAT_PUMP, String(label) + " stopped");
             }
             snprintf(ack, sizeof(ack), "PUMP,%s,OK", label);
             Serial.print(F("[Comms] Pump "));
             Serial.print(label);
             Serial.print(' ');
             Serial.println(action);
+            // ACK before logEvent — same reason as valve handler above
+            sendAck(ack);
+            logEvent(LOG_INFO, LOG_CAT_PUMP,
+                     String(label) + (starting ? " started" : " stopped"));
         }
-        sendAck(ack);
     }
     // ── Calibration commands ────────────────────────────────────────
     //    Format: C,CAL_<TYPE>,<CONTAINER>[,<PARAM>[,<VALUE>]]
