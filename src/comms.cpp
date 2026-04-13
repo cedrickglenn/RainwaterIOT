@@ -223,16 +223,21 @@ static void processCommand(const char* cmd)
     }
     // ── Emergency stop ──────────────────────────────────────────────
     else if (strncmp(payload, "ESTOP,ON", 8) == 0) {
+        // ACK first — pipeline_emergencyStop() triggers multiple logEvent()
+        // calls (one per actuator closed) which fill the TX buffer before the
+        // ACK can be sent if we don't send it here first.
+        sendAck("ESTOP,OK");
         pipeline_emergencyStop();
         firstFlush_reset();
         Serial.println(F("[Comms] CMD: EMERGENCY STOP"));
+        logEvent(LOG_WARN, LOG_CAT_SYSTEM, F("E-STOP activated — all actuators off"));
     }
     else if (strncmp(payload, "ESTOP,OFF", 9) == 0) {
-        // Clear the emergency flag — pipeline will resume automatically
-        // on the next update() if water-level conditions are met.
+        sendAck("ESTOP,OK");
         pipeline_init();
         firstFlush_init();
         Serial.println(F("[Comms] CMD: Emergency cleared — system reset"));
+        logEvent(LOG_INFO, LOG_CAT_SYSTEM, F("E-STOP cleared — system ready"));
     }
     // ── Manual valve control ─────────────────────────────────────────
     //    Format: C,VALVE,Vn,ON|OFF   e.g. C,VALVE,V3,ON
