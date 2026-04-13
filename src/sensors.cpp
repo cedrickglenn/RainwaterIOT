@@ -67,27 +67,25 @@ static float lastVoltageC6 = 0.0f;
 // ═════════════════════════════════════════════════════════════════════════
 
 /**
- * Take three rapid ultrasonic readings and return the median.
- * Rejects the occasional wild echo caused by ripples, bubbles, or
- * acoustic reflections inside the container.
+ * Take a single ultrasonic reading and return the distance in cm.
  *
- * SUGGESTION: If you still get noisy readings, try increasing to
- * median-of-5 or add a thin PVC cone ("acoustic funnel") below the
- * sensor to stabilise the beam path.
+ * The previous median-of-3 approach (3 reads + 2×delay(10)) blocked
+ * ~110ms per sensor — 550ms for all five — which caused the Mega's
+ * command-receive loop to miss the ESP32's ACK drain window.
+ *
+ * A single read per 1-second interval is sufficient: the HC-SR04 echo
+ * has fully dissipated long before the next trigger, so no inter-read
+ * settling delay is needed.  Each call now blocks only ~5ms (typical
+ * echo for a 50–100cm water surface) instead of ~110ms.
+ *
+ * SUGGESTION: If you see occasional wild readings due to surface ripples,
+ * implement a ring-buffer median across the last 3 *intervals* instead of
+ * 3 rapid reads within one interval — this keeps each call fast while
+ * still rejecting outliers.
  */
-static float readUltrasonicMedian(Ultrasonic& sensor)
+static float readUltrasonic(Ultrasonic& sensor)
 {
-    float a = (float)sensor.read();
-    delay(10);
-    float b = (float)sensor.read();
-    delay(10);
-    float c = (float)sensor.read();
-
-    // Sort three values — the middle one is the median
-    if (a > b) { float t = a; a = b; b = t; }
-    if (b > c) { float t = b; b = c; c = t; }
-    if (a > b) { float t = a; a = b; b = t; }
-    return b;  // median
+    return (float)sensor.read();
 }
 
 /**
@@ -173,11 +171,11 @@ void sensors_readAll(SensorData* data)
     // ── Ultrasonic levels → calibrated fill percentage (0–100%) ────
     //    cal_applyLevel() converts raw cm distance to % using stored
     //    empty/full distances set during level calibration.
-    data->levelC2 = cal_applyLevel(0, readUltrasonicMedian(usC2));
-    data->levelC3 = cal_applyLevel(1, readUltrasonicMedian(usC3));
-    data->levelC4 = cal_applyLevel(2, readUltrasonicMedian(usC4));
-    data->levelC5 = cal_applyLevel(3, readUltrasonicMedian(usC5));
-    data->levelC6 = cal_applyLevel(4, readUltrasonicMedian(usC6));
+    data->levelC2 = cal_applyLevel(0, readUltrasonic(usC2));
+    data->levelC3 = cal_applyLevel(1, readUltrasonic(usC3));
+    data->levelC4 = cal_applyLevel(2, readUltrasonic(usC4));
+    data->levelC5 = cal_applyLevel(3, readUltrasonic(usC5));
+    data->levelC6 = cal_applyLevel(4, readUltrasonic(usC6));
 
     // ── pH & turbidity (fast analog reads — no blocking) ────────────
     data->turbidityC2 = readTurbidityNTU(TURB_C2_PIN, 0);
