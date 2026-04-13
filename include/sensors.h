@@ -46,26 +46,43 @@ struct SensorData {
 
     // ── Ultrasonic water levels (cm from sensor face to water surface)
     //    LOWER value = HIGHER water level
-    float levelC2;            // Container 2  (buffer storage)
-    float levelC3;            // Container 3  (charcoal filter)
-    float levelC4;            // Container 4  (pre-commercial RO buffer)
-    float levelC5;            // Container 5  (quality-check tank)
-    float levelC6;            // Container 6  (final potable storage)
+    float levelC2;            // Container 2  — calibrated fill %
+    float levelC3;            // Container 3  — calibrated fill %
+    float levelC4;            // Container 4  — calibrated fill %
+    float levelC5;            // Container 5  — calibrated fill %
+    float levelC6;            // Container 6  — calibrated fill %
+
+    // ── Raw ultrasonic distances (cm) — before cal_applyLevel() ────
+    //    Exposed for the calibration dashboard so the operator can see
+    //    the exact sensor reading when setting EMPTY / FULL references.
+    float rawDistC2;          // Container 2  — raw distance (cm)
+    float rawDistC3;          // Container 3  — raw distance (cm)
+    float rawDistC4;          // Container 4  — raw distance (cm)
+    float rawDistC5;          // Container 5  — raw distance (cm)
+    float rawDistC6;          // Container 6  — raw distance (cm)
 
     // ── Container 2 water quality (raw rainwater, post-first-flush) ───
-    float tempC2;             // Temperature (°C)
-    float phC2;               // pH (0–14 scale)
-    float turbidityC2;        // Turbidity (NTU)
+    float tempC2;             // Temperature (°C) — offset-corrected
+    float phC2;               // pH (0–14 scale)  — calibrated
+    float turbidityC2;        // Turbidity (NTU)  — calibrated
 
     // ── Container 5 water quality ───────────────────────────────────
-    float tempC5;             // Temperature (°C)
-    float phC5;               // pH (0–14 scale)
-    float turbidityC5;        // Turbidity (NTU)
+    float tempC5;             // Temperature (°C) — offset-corrected
+    float phC5;               // pH (0–14 scale)  — calibrated
+    float turbidityC5;        // Turbidity (NTU)  — calibrated
 
     // ── Container 6 water quality (monitoring / read-only) ──────────
-    float tempC6;             // Temperature (°C)
-    float phC6;               // pH (0–14 scale)
-    float turbidityC6;        // Turbidity (NTU)
+    float tempC6;             // Temperature (°C) — offset-corrected
+    float phC6;               // pH (0–14 scale)  — calibrated
+    float turbidityC6;        // Turbidity (NTU)  — calibrated
+
+    // ── Raw quality sensor values — before calibration is applied ───
+    //    pH:       ADC voltage in mV (neutral ≈ 2530 mV, acid ≈ 2030 mV)
+    //    Turbidity: ADC voltage in V  (clear ≈ 4.2 V, murky lower)
+    //    Temp:     DS18B20 °C before per-sensor offset correction
+    float rawMvC2;    float rawMvC5;    float rawMvC6;    // pH probe mV
+    float rawTurbVC2; float rawTurbVC5; float rawTurbVC6; // turbidity V
+    float rawTempC2;  float rawTempC5;  float rawTempC6;  // temp °C (no offset)
 };
 
 /**

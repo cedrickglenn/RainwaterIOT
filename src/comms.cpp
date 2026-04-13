@@ -88,7 +88,7 @@ void comms_sendData(const SensorData* data,
     if ((now - lastTxMs) < COMMS_TX_INTERVAL_MS) return;
     lastTxMs = now;
 
-    // ── Sensor values ───────────────────────────────────────────────
+    // ── Calibrated sensor values ─────────────────────────────────────
     sendLine("FLOW",    data->flowRate,    2);
     sendLine("LVL_C2",  data->levelC2,     1);
     sendLine("TEMP_C2", data->tempC2,      1);
@@ -104,6 +104,22 @@ void comms_sendData(const SensorData* data,
     sendLine("TEMP_C6", data->tempC6,      1);
     sendLine("PH_C6",   data->phC6,        2);
     sendLine("TURB_C6", data->turbidityC6, 1);
+
+    // ── Raw (pre-calibration) values — used by the calibration dashboard
+    sendLine("RAW_DIST_C2",   data->rawDistC2,   1);
+    sendLine("RAW_DIST_C3",   data->rawDistC3,   1);
+    sendLine("RAW_DIST_C4",   data->rawDistC4,   1);
+    sendLine("RAW_DIST_C5",   data->rawDistC5,   1);
+    sendLine("RAW_DIST_C6",   data->rawDistC6,   1);
+    sendLine("RAW_MV_C2",     data->rawMvC2,     0);
+    sendLine("RAW_MV_C5",     data->rawMvC5,     0);
+    sendLine("RAW_MV_C6",     data->rawMvC6,     0);
+    sendLine("RAW_TURB_V_C2", data->rawTurbVC2,  3);
+    sendLine("RAW_TURB_V_C5", data->rawTurbVC5,  3);
+    sendLine("RAW_TURB_V_C6", data->rawTurbVC6,  3);
+    sendLine("RAW_TEMP_C2",   data->rawTempC2,   1);
+    sendLine("RAW_TEMP_C5",   data->rawTempC5,   1);
+    sendLine("RAW_TEMP_C6",   data->rawTempC6,   1);
 
     // ── Aggregated system state ─────────────────────────────────────
     //    Format: "S,STATE,<ff_state>,<filter_mode>,<backwash_state>\n"
@@ -436,11 +452,15 @@ static void processCommand(const char* cmd)
         const uint8_t trigPins[5] = { US_C2_TRIG, US_C3_TRIG, US_C4_TRIG, US_C5_TRIG, US_C6_TRIG };
         const uint8_t echoPins[5] = { US_C2_ECHO, US_C3_ECHO, US_C4_ECHO, US_C5_ECHO, US_C6_ECHO };
 
-        // Simple single-shot read (not median) for calibration capture
+        // Simple single-shot read (not median) for calibration capture.
+        // Timeout: 25 000 µs ≈ 4.3 m max range — ensures the call returns
+        // well within the ESP32's 200 ms ACK drain window.  Without a timeout
+        // pulseIn() blocks up to 1 s, causing the ESP32 to log a false
+        // "no ACK (200ms timeout)" warning even though the Mega did respond.
         digitalWrite(trigPins[idx], LOW);  delayMicroseconds(2);
         digitalWrite(trigPins[idx], HIGH); delayMicroseconds(10);
         digitalWrite(trigPins[idx], LOW);
-        float distCm = pulseIn(echoPins[idx], HIGH) / 58.0f;
+        float distCm = pulseIn(echoPins[idx], HIGH, 25000UL) / 58.0f;
 
         if (strncmp(point, "EMPTY", 5) == 0) {
             calData.level[idx].emptyCm = distCm;

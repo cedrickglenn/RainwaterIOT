@@ -159,36 +159,40 @@ void sensors_readAll(SensorData* data)
     // complete well within the 1000ms SENSOR_READ_INTERVAL_MS, so these
     // values are always fresh.  Reading first removes 2250ms of blocking
     // that previously locked out the Mega's command-receive loop.
-    data->tempC2 = cal_applyTemp(0, tempC2.getTempCByIndex(0));
-    data->tempC5 = cal_applyTemp(1, tempC5.getTempCByIndex(0));
-    data->tempC6 = cal_applyTemp(2, tempC6.getTempCByIndex(0));
+    { float t = tempC2.getTempCByIndex(0); data->rawTempC2 = t; data->tempC2 = cal_applyTemp(0, t); }
+    { float t = tempC5.getTempCByIndex(0); data->rawTempC5 = t; data->tempC5 = cal_applyTemp(1, t); }
+    { float t = tempC6.getTempCByIndex(0); data->rawTempC6 = t; data->tempC6 = cal_applyTemp(2, t); }
 
     // ── Flow rate ───────────────────────────────────────────────────
     flowSensor.read();
     lastFlowRate   = flowSensor.getFlowRate_m();
     data->flowRate = lastFlowRate;
 
-    // ── Ultrasonic levels → calibrated fill percentage (0–100%) ────
-    //    cal_applyLevel() converts raw cm distance to % using stored
-    //    empty/full distances set during level calibration.
-    data->levelC2 = cal_applyLevel(0, readUltrasonic(usC2));
-    data->levelC3 = cal_applyLevel(1, readUltrasonic(usC3));
-    data->levelC4 = cal_applyLevel(2, readUltrasonic(usC4));
-    data->levelC5 = cal_applyLevel(3, readUltrasonic(usC5));
-    data->levelC6 = cal_applyLevel(4, readUltrasonic(usC6));
+    // ── Ultrasonic levels — capture raw cm, then calibrate to % ────
+    //    Raw distances are stored for the calibration dashboard so the
+    //    operator can see exactly what the sensor reads when setting the
+    //    EMPTY / FULL reference distances.
+    { float d = readUltrasonic(usC2); data->rawDistC2 = d; data->levelC2 = cal_applyLevel(0, d); }
+    { float d = readUltrasonic(usC3); data->rawDistC3 = d; data->levelC3 = cal_applyLevel(1, d); }
+    { float d = readUltrasonic(usC4); data->rawDistC4 = d; data->levelC4 = cal_applyLevel(2, d); }
+    { float d = readUltrasonic(usC5); data->rawDistC5 = d; data->levelC5 = cal_applyLevel(3, d); }
+    { float d = readUltrasonic(usC6); data->rawDistC6 = d; data->levelC6 = cal_applyLevel(4, d); }
 
-    // ── pH & turbidity (fast analog reads — no blocking) ────────────
-    data->turbidityC2 = readTurbidityNTU(TURB_C2_PIN, 0);
-    lastVoltageC2     = analogRead(PH_C2_PIN) / 1024.0f * 5000.0f;
-    data->phC2        = cal_applyPH(0, lastVoltageC2);
+    // ── pH & turbidity — capture raw voltages, then calibrate ───────
+    { float v = sensors_readTurbVoltage(TURB_C2_PIN); data->rawTurbVC2 = v; data->turbidityC2 = cal_applyTurb(0, v); }
+    lastVoltageC2  = analogRead(PH_C2_PIN) / 1024.0f * 5000.0f;
+    data->rawMvC2  = lastVoltageC2;
+    data->phC2     = cal_applyPH(0, lastVoltageC2);
 
-    data->turbidityC5 = readTurbidityNTU(TURB_C5_PIN, 1);
-    lastVoltageC5     = analogRead(PH_C5_PIN) / 1024.0f * 5000.0f;
-    data->phC5        = cal_applyPH(1, lastVoltageC5);
+    { float v = sensors_readTurbVoltage(TURB_C5_PIN); data->rawTurbVC5 = v; data->turbidityC5 = cal_applyTurb(1, v); }
+    lastVoltageC5  = analogRead(PH_C5_PIN) / 1024.0f * 5000.0f;
+    data->rawMvC5  = lastVoltageC5;
+    data->phC5     = cal_applyPH(1, lastVoltageC5);
 
-    data->turbidityC6 = readTurbidityNTU(TURB_C6_PIN, 2);
-    lastVoltageC6     = analogRead(PH_C6_PIN) / 1024.0f * 5000.0f;
-    data->phC6        = cal_applyPH(2, lastVoltageC6);
+    { float v = sensors_readTurbVoltage(TURB_C6_PIN); data->rawTurbVC6 = v; data->turbidityC6 = cal_applyTurb(2, v); }
+    lastVoltageC6  = analogRead(PH_C6_PIN) / 1024.0f * 5000.0f;
+    data->rawMvC6  = lastVoltageC6;
+    data->phC6     = cal_applyPH(2, lastVoltageC6);
 
     // ── Fire next temperature conversion (non-blocking, ~1ms) ───────
     // Results will be ready in 750ms — well before the next call at
