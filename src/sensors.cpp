@@ -30,8 +30,9 @@
  */
 
 // ── Flow Sensor ─────────────────────────────────────────────────────────
-static FlowSensor flowSensor(YFS201, FLOW_SENSOR_PIN);
-static float      lastFlowRate = 0.0f;
+static FlowSensor     flowSensor(YFS201, FLOW_SENSOR_PIN);
+static float          lastFlowRate      = 0.0f;
+static unsigned long  lastTotalPulses   = 0UL;  // for computing per-interval delta
 
 // The ISR must be a plain free function (no captures / member pointers).
 void sensors_flowISR()
@@ -117,17 +118,12 @@ float sensors_readTurbVoltage(uint8_t analogPin)
 
 void sensors_init()
 {
-    // Flow sensor — enable internal pull-up on the signal pin.
-    // The YF-S201 has an open-collector output and needs the line held HIGH
-    // between pulses. Without this (or an external 10kΩ pull-up to 5V),
-    // the floating pin picks up EMI noise and generates phantom pulse counts.
-    // The internal pull-up (~50kΩ) is a software fallback — an external 10kΩ
-    // resistor from pin 2 to ANY 5V source (common ground required) is preferred
-    // for long wire runs (> 1m) or noisy environments near pumps/relays.
-    pinMode(FLOW_SENSOR_PIN, INPUT_PULLUP);
-
-    // Attach interrupt on the rising edge of each pulse.
-    flowSensor.begin(sensors_flowISR);
+    // Flow sensor — external 4.7kΩ pull-up resistor is fitted on the signal
+    // line, so pass pullup=true to begin().  The library's default (pullup=false)
+    // would enable INPUT_PULLUP, layering a ~50kΩ internal resistor in parallel
+    // with the external one — harmless but unnecessary.
+    // No separate pinMode() call needed; begin() configures the pin itself.
+    flowSensor.begin(sensors_flowISR, true);  // true = external pull-up fitted
 
     // Temperature buses — disable blocking wait so requestTemperatures() returns
     // immediately (conversion happens in the sensor's internal circuit over ~750ms).
@@ -165,8 +161,24 @@ void sensors_readAll(SensorData* data)
 
     // ── Flow rate ───────────────────────────────────────────────────
     flowSensor.read();
-    lastFlowRate   = flowSensor.getFlowRate_m();
-    data->flowRate = lastFlowRate;
+
+    // Compute per-interval pulse delta from the cumulative total.
+    // getPulse() returns _totalpulse (cumulative); read() adds the just-cleared
+    // _pulse to it before zeroing _pulse — so the delta is valid post-read().
+    {
+        unsigned long total = flowSensor.getPulse();
+        data->rawFlowPulses = total - lastTotalPulses;
+        lastTotalPulses     = total;
+    }
+
+    // getFlowRate_m() can return inf on the first call (elapsed time ≈ 0 due
+    // to _timebefore initialising to 0) or spurious values from noise pulses.
+    // isfinite() rejects inf/nan; FLOW_MIN_THRESHOLD rejects the noise floor.
+    {
+        float raw      = flowSensor.getFlowRate_m();
+        lastFlowRate   = (isfinite(raw) && raw >= FLOW_MIN_THRESHOLD) ? raw : 0.0f;
+        data->flowRate = lastFlowRate;
+    }
 
     // ── Ultrasonic levels — capture raw cm, then calibrate to % ────
     //    Raw distances are stored for the calibration dashboard so the

@@ -26,6 +26,7 @@
 // ── Module state ────────────────────────────────────────────────────────
 static FirstFlushState state = FF_IDLE;
 
+static unsigned long confirmStartMs   = 0;  // when sustained flow first seen (CONFIRMING)
 static unsigned long divertStartMs    = 0;  // when diversion began
 static unsigned long flowConsistentMs = 0;  // accumulated consistent-flow time
 static unsigned long lastFlowSeenMs   = 0;  // last millis() with active flow
@@ -46,17 +47,38 @@ void firstFlush_update(bool flowActive)
 
     switch (state) {
 
-        // ── IDLE — waiting for rain ─────────────────────────────────
+        // ── IDLE — waiting for rain, V8 sleeping ───────────────────
         case FF_IDLE:
             if (flowActive) {
-                state = FF_DIVERTING;
-                valve_open(VALVE8_PIN);     // divert to drainage
-                valve_close(VALVE1_PIN);    // container 2 stays closed
-                divertStartMs    = now;
-                flowConsistentMs = 0;
-                lastFlowSeenMs   = now;
-                logEvent(LOG_INFO, LOG_CAT_FILTER, F("FF_DIVERTING"));
-                Serial.println(F("[FirstFlush] Rain detected -> DIVERTING"));
+                state          = FF_CONFIRMING;
+                confirmStartMs = now;
+                lastFlowSeenMs = now;
+                logEvent(LOG_INFO, LOG_CAT_FILTER, F("FF_CONFIRMING"));
+                Serial.println(F("[FirstFlush] Flow detected -> CONFIRMING"));
+            }
+            break;
+
+        // ── CONFIRMING — flow seen, waiting before opening V8 ──────
+        //    V8 stays closed here.  This filters splashes / transients
+        //    and gives water time to travel from the sensor to the valve.
+        case FF_CONFIRMING:
+            if (flowActive) {
+                lastFlowSeenMs = now;
+                if ((now - confirmStartMs) >= FLOW_CONFIRM_MS) {
+                    // Sustained flow confirmed — open V8 and start diverting
+                    state = FF_DIVERTING;
+                    valve_open(VALVE8_PIN);
+                    valve_close(VALVE1_PIN);
+                    divertStartMs    = now;
+                    flowConsistentMs = now - confirmStartMs;  // count confirm time
+                    logEvent(LOG_INFO, LOG_CAT_FILTER, F("FF_DIVERTING"));
+                    Serial.println(F("[FirstFlush] Confirmed -> DIVERTING (V8 open)"));
+                }
+            } else {
+                // Flow dropped before confirmation — false alarm, back to IDLE
+                state = FF_IDLE;
+                logEvent(LOG_INFO, LOG_CAT_FILTER, F("FF_IDLE"));
+                Serial.println(F("[FirstFlush] Confirm failed -> IDLE"));
             }
             break;
 

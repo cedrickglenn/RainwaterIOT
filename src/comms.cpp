@@ -120,6 +120,10 @@ void comms_sendData(const SensorData* data,
     sendLine("RAW_TEMP_C2",   data->rawTempC2,   1);
     sendLine("RAW_TEMP_C5",   data->rawTempC5,   1);
     sendLine("RAW_TEMP_C6",   data->rawTempC6,   1);
+    // Flow pulse count — shows actual pulses this interval so you can verify
+    // the sensor is quiet at idle and responding correctly during real flow.
+    Serial1.print(F("S,RAW_FLOW_PULSES,"));
+    Serial1.println(data->rawFlowPulses);
 
     // ── Aggregated system state ─────────────────────────────────────
     //    Format: "S,STATE,<ff_state>,<filter_mode>,<backwash_state>\n"

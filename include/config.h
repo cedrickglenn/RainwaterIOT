@@ -121,6 +121,12 @@
 // Filters out sensor noise when no water is actually moving.
 #define FLOW_MIN_THRESHOLD     0.5f  // L/min
 
+// How long flow must be sustained before Valve 8 (first-flush diverter)
+// opens.  The flow sensor is upstream of V8 — this delay lets water
+// travel the pipe length so we don't actuate on a splash or sensor
+// transient.  3 seconds at typical gutter flow is sufficient.
+#define FLOW_CONFIRM_MS        3000UL  // 3 seconds
+
 // ── Serial Baud Rates ───────────────────────────────────────────────────
 #define DEBUG_BAUD_RATE        115200 // USB Serial (Serial Monitor / debug)
 #define ESP32_BAUD_RATE        115200  // Serial1 → ESP32 link

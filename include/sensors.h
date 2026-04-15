@@ -42,7 +42,8 @@
  */
 struct SensorData {
     // ── Flow ────────────────────────────────────────────────────────
-    float flowRate;           // L/min — instantaneous flow from catchment
+    float         flowRate;       // L/min — instantaneous (thresholded; 0 when idle)
+    unsigned long rawFlowPulses;  // raw pulse count accumulated this interval
 
     // ── Ultrasonic water levels (cm from sensor face to water surface)
     //    LOWER value = HIGHER water level

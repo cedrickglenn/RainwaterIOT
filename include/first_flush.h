@@ -21,19 +21,29 @@
  *
  *  STATE MACHINE:
  *
- *  ┌──────┐  flow detected   ┌───────────┐  consistent for 5 min  ┌────────────┐
- *  │ IDLE │ ───────────────→ │ DIVERTING │ ─────────────────────→ │ COLLECTING │
- *  └──────┘                  └───────────┘                        └────────────┘
- *     ↑                          │                                      │
- *     │   flow timeout           │                                      │
- *     └──────────────────────────┘                                      │
- *     ↑                                                                 │
- *     │            flow stops AND collection window expired             │
- *     └─────────────────────────────────────────────────────────────────┘
+ *  ┌──────┐  flow detected  ┌────────────┐  confirmed (3 s)  ┌───────────┐  5 min  ┌────────────┐
+ *  │ IDLE │ ─────────────→ │ CONFIRMING │ ────────────────→ │ DIVERTING │ ──────→ │ COLLECTING │
+ *  └──────┘                └────────────┘                   └───────────┘         └────────────┘
+ *     ↑                         │                                │                      │
+ *     │       flow stops        │            flow timeout        │                      │
+ *     └─────────────────────────┘                                │                      │
+ *     ↑                                                          │                      │
+ *     └──────────────────────────────────────────────────────────┘                      │
+ *     ↑                                                                                 │
+ *     │               flow stops AND collection window expired                          │
+ *     └─────────────────────────────────────────────────────────────────────────────────┘
  *
  *  IDLE:
- *    All valves closed.  Flow sensor is monitored passively.
- *    → DIVERTING when flow is first detected.
+ *    All valves closed.  Flow sensor is monitored passively — no valve wear,
+ *    no power draw.
+ *    → CONFIRMING when flow first crosses FLOW_MIN_THRESHOLD.
+ *
+ *  CONFIRMING:
+ *    Still all valves closed.  Waits FLOW_CONFIRM_MS of sustained flow
+ *    before committing to open V8.  This filters splashes, sensor transients,
+ *    and lets water travel the pipe length from the sensor to the valve.
+ *    → DIVERTING once confirmed.
+ *    → IDLE if flow drops before confirmation.
  *
  *  DIVERTING:
  *    Valve 8 OPEN (to drainage), Valve 1 CLOSED.
@@ -73,8 +83,9 @@
  * First-flush diverter states.
  */
 enum FirstFlushState {
-    FF_IDLE,          // No rain — everything closed, waiting
-    FF_DIVERTING,     // Rain detected — diverting first flush to drain
+    FF_IDLE,          // No rain — everything closed, flow sensor watching
+    FF_CONFIRMING,    // Flow detected — waiting FLOW_CONFIRM_MS before opening V8
+    FF_DIVERTING,     // Confirmed rain — diverting first flush to drain
     FF_COLLECTING     // First flush done — collecting into Container 2
 };
 
