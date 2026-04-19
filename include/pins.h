@@ -30,75 +30,70 @@
  *                                 │       (feedback loop) │
  *                                 └───────────────────────┘
  *
- *  PIN GROUPS (chosen to avoid conflicts on the Mega 1280):
- *    22–29   Relay-driven solenoid valves (active-LOW)
- *    30–33   Relay-driven pumps (active-LOW)
- *    2       Water flow sensor (interrupt-capable — INT0)
- *    34–43   Ultrasonic sensor Trig/Echo pairs
- *    44–45   DS18B20 temperature sensors (OneWire, digital)
- *    A0–A3   Analog sensors (pH × 2, turbidity × 2)
+ *  PIN GROUPS:
+ *    4–11    Relay-driven solenoid valves (active-LOW)
+ *    14–17   Relay-driven pumps (active-LOW) — TX3/RX3/TX2/RX2, safe if Serial2/3 unused
+ *    21      Water flow sensor (interrupt-capable — INT2)
+ *    35–45   Ultrasonic sensor Trig/Echo pairs
+ *    37/43/51  DS18B20 temperature sensors (OneWire, digital)
+ *    A0–A11  Analog sensors (pH × 3, turbidity × 3)
  *    18/19   Serial1 TX/RX → ESP32 communication (hardware UART)
- *
- *  NOTE: The old pin layout (valves on 35–45) overlapped with the
- *  ultrasonic echo/trigger pins. This revised layout puts all relays
- *  on 22–33 (Mega digital header) and all sensors on 34+ / analog,
- *  eliminating every conflict.
  *
  * ═══════════════════════════════════════════════════════════════════════════
  */
 
 // ── Solenoid Valves (normally-closed, relay active-LOW) ─────────────────
-#define VALVE1_PIN   22   // Container 1 → Container 2 (pass-through after first flush)
-#define VALVE2_PIN   23   // Container 2 output (to charcoal filter intake)
-#define VALVE3_PIN   25   // Charcoal filter → Container 6 DIRECT (bypasses RO)
-#define VALVE4_PIN   26   // Charcoal filter → Container 4 (to commercial RO path)
-#define VALVE5_PIN   30   // Charcoal filter drainage (backwash drain outlet)
-#define VALVE6_PIN   31   // Container 5 feedback path (bad water → Container 4)
-#define VALVE7_PIN   32   // Container 5 → Container 6 (good water pass-through)
-#define VALVE8_PIN   33   // First flush diverter (routes initial rain to drainage)
+#define VALVE1_PIN   11   // Container 1 → Container 2 (pass-through after first flush)
+#define VALVE2_PIN   10   // Container 2 output (to charcoal filter intake)
+#define VALVE3_PIN   9  // Charcoal filter → Container 6 DIRECT (bypasses RO)
+#define VALVE4_PIN   8   // Charcoal filter → Container 4 (to commercial RO path)
+#define VALVE5_PIN   7   // Charcoal filter drainage (backwash drain outlet)
+#define VALVE6_PIN   6   // Container 5 feedback path (bad water → Container 4)
+#define VALVE7_PIN   5   // Container 5 → Container 6 (good water pass-through)
+#define VALVE8_PIN   4   // First flush diverter (routes initial rain to drainage)
 
 // ── Pumps (relay active-LOW) ────────────────────────────────────────────
-#define PUMP1_PIN    24   // Pushes water: Container 2 → charcoal filter
-#define PUMP2_PIN    27   // Pushes water: Container 4 → commercial RO filter
-#define PUMP3_PIN    28   // Pushes water: Container 5 output (to valve 7 or valve 6)
-#define PUMP4_PIN    29   // Feedback booster: Container 5 → Container 4 (recycle)
+#define PUMP1_PIN    14   // Pushes water: Container 2 → charcoal filter
+#define PUMP2_PIN    15   // Pushes water: Container 4 → commercial RO filter
+#define PUMP3_PIN    16   // Pushes water: Container 5 output (to valve 7 or valve 6)
+#define PUMP4_PIN    17   // Feedback booster: Container 5 → Container 4 (recycle)
 
 // ── Water Flow Sensor (YF-S201) ─────────────────────────────────────────
-//    Must be on an interrupt-capable pin. On Mega: 2 (INT0), 3 (INT1).
-#define FLOW_SENSOR_PIN  2
+//    Pin 21 = INT2 on the Mega (interrupt-capable).
+#define FLOW_SENSOR_PIN  21
 
 // ── Ultrasonic Sensors (HC-SR04) — Trigger / Echo pairs ─────────────────
-#define US_C2_TRIG   34   // Container 2 — buffer storage water level
-#define US_C2_ECHO   35
+#define US_C2_TRIG   45   // Container 2 — buffer storage water level
+#define US_C2_ECHO   44
 
-#define US_C3_TRIG   36   // Container 3 — charcoal filter level (backwash monitoring)
-#define US_C3_ECHO   37
+#define US_C3_TRIG   42   // Container 3 — charcoal filter level (backwash monitoring)
+#define US_C3_ECHO   41
 
-#define US_C4_TRIG   38   // Container 4 — pre-commercial RO buffer level
-#define US_C4_ECHO   39
+#define US_C4_TRIG   39   // Container 4 — pre-commercial RO buffer level
+#define US_C4_ECHO   38
 
-#define US_C5_TRIG   40   // Container 5 — post-treatment quality-check tank level
-#define US_C5_ECHO   41
+#define US_C5_TRIG   36   // Container 5 — post-treatment quality-check tank level
+#define US_C5_ECHO   35
 
-#define US_C6_TRIG   42   // Container 6 — final potable water storage level
-#define US_C6_ECHO   43
+#define US_C6_TRIG   53   // Container 6 — final potable water storage level
+#define US_C6_ECHO   52
 
 // ── DS18B20 Temperature Sensors (OneWire, digital) ──────────────────────
 //    Each sensor lives on its own OneWire bus (separate pins). This avoids
 //    having to enumerate ROM addresses — simpler wiring and code.
-#define TEMP_C2_PIN  44   // Container 2 (buffer storage) water temperature
-#define TEMP_C5_PIN  45   // Container 5 water temperature
-#define TEMP_C6_PIN  46   // Container 6 water temperature
+#define TEMP_C2_PIN  43   // Container 2 (buffer storage) water temperature
+#define TEMP_C5_PIN  37   // Container 5 water temperature
+#define TEMP_C6_PIN  51   // Container 6 water temperature
 
 // ── pH Sensors — DFRobot SEN0161-V2 (analog) ───────────────────────────
-#define PH_C2_PIN    A0   // Container 2 (buffer storage) pH  — post-first-flush rainwater
-#define PH_C5_PIN    A1   // Container 5 pH
-#define PH_C6_PIN    A2   // Container 6 pH
+#define PH_C2_PIN    A11  // Container 2 (buffer storage) pH  — post-first-flush rainwater
+#define PH_C5_PIN    A6   // Container 5 pH
+#define PH_C6_PIN    A1   // Container 6 pH
 
 // ── Turbidity Sensors (analog) ──────────────────────────────────────────
-#define TURB_C2_PIN  A3   // Container 2 (buffer storage) turbidity — post-first-flush
-#define TURB_C5_PIN  A4   // Container 5 turbidity
-#define TURB_C6_PIN  A5   // Container 6 turbidity
+#define TURB_C2_PIN  A10  // Container 2 (buffer storage) turbidity — post-first-flush
+#define TURB_C5_PIN  A5   // Container 5 turbidity
+#define TURB_C6_PIN  A0   // Container 6 turbidity
 
 // ── ESP32 Communication ─────────────────────────────────────────────────
 //    Uses hardware Serial1 on the Mega (TX1 = pin 18, RX1 = pin 19).
