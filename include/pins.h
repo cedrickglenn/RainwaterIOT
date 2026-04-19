@@ -30,33 +30,33 @@
  *                                 │       (feedback loop) │
  *                                 └───────────────────────┘
  *
- *  PIN GROUPS:
- *    4–11    Relay-driven solenoid valves (active-LOW)
- *    14–17   Relay-driven pumps (active-LOW) — TX3/RX3/TX2/RX2, safe if Serial2/3 unused
+ *  PIN GROUPS (chosen to avoid conflicts on the Mega 2560):
+ *    22–33   Relay-driven solenoid valves (active-LOW) — V1–V8 on 22/23/25/26/30–33
+ *    24/27–29 Relay-driven pumps (active-LOW) — P1–P4
  *    21      Water flow sensor (interrupt-capable — INT2)
- *    35–45   Ultrasonic sensor Trig/Echo pairs
- *    37/43/51  DS18B20 temperature sensors (OneWire, digital)
- *    A0–A11  Analog sensors (pH × 3, turbidity × 3)
+ *    35–53   Ultrasonic sensor Trig/Echo pairs
+ *    43/37/51 DS18B20 temperature sensors (OneWire, digital)
+ *    A0/A1/A5/A6/A10/A11  Analog sensors (pH × 3, turbidity × 3)
  *    18/19   Serial1 TX/RX → ESP32 communication (hardware UART)
  *
  * ═══════════════════════════════════════════════════════════════════════════
  */
 
 // ── Solenoid Valves (normally-closed, relay active-LOW) ─────────────────
-#define VALVE1_PIN   11   // Container 1 → Container 2 (pass-through after first flush)
-#define VALVE2_PIN   10   // Container 2 output (to charcoal filter intake)
-#define VALVE3_PIN   9  // Charcoal filter → Container 6 DIRECT (bypasses RO)
-#define VALVE4_PIN   8   // Charcoal filter → Container 4 (to commercial RO path)
-#define VALVE5_PIN   7   // Charcoal filter drainage (backwash drain outlet)
-#define VALVE6_PIN   6   // Container 5 feedback path (bad water → Container 4)
-#define VALVE7_PIN   5   // Container 5 → Container 6 (good water pass-through)
-#define VALVE8_PIN   4   // First flush diverter (routes initial rain to drainage)
+#define VALVE1_PIN   22   // Container 1 → Container 2 (pass-through after first flush)
+#define VALVE2_PIN   23   // Container 2 output (to charcoal filter intake)
+#define VALVE3_PIN   25   // Charcoal filter → Container 6 DIRECT (bypasses RO)
+#define VALVE4_PIN   26   // Charcoal filter → Container 4 (to commercial RO path)
+#define VALVE5_PIN   30   // Charcoal filter drainage (backwash drain outlet)
+#define VALVE6_PIN   31   // Container 5 feedback path (bad water → Container 4)
+#define VALVE7_PIN   32   // Container 5 → Container 6 (good water pass-through)
+#define VALVE8_PIN   33   // First flush diverter (routes initial rain to drainage)
 
 // ── Pumps (relay active-LOW) ────────────────────────────────────────────
-#define PUMP1_PIN    14   // Pushes water: Container 2 → charcoal filter
-#define PUMP2_PIN    15   // Pushes water: Container 4 → commercial RO filter
-#define PUMP3_PIN    16   // Pushes water: Container 5 output (to valve 7 or valve 6)
-#define PUMP4_PIN    17   // Feedback booster: Container 5 → Container 4 (recycle)
+#define PUMP1_PIN    24   // Pushes water: Container 2 → charcoal filter
+#define PUMP2_PIN    27   // Pushes water: Container 4 → commercial RO filter
+#define PUMP3_PIN    28   // Pushes water: Container 5 output (to valve 7 or valve 6)
+#define PUMP4_PIN    29   // Feedback booster: Container 5 → Container 4 (recycle)
 
 // ── Water Flow Sensor (YF-S201) ─────────────────────────────────────────
 //    Pin 21 = INT2 on the Mega (interrupt-capable).
