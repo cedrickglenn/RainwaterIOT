@@ -133,6 +133,12 @@ void sensors_init()
     tempC2.begin(); tempC2.setWaitForConversion(false);
     tempC5.begin(); tempC5.setWaitForConversion(false);
     tempC6.begin(); tempC6.setWaitForConversion(false);
+    Serial.print(F("[Sensors] Temp devices — C2:"));
+    Serial.print(tempC2.getDeviceCount());
+    Serial.print(F(" C5:"));
+    Serial.print(tempC5.getDeviceCount());
+    Serial.print(F(" C6:"));
+    Serial.println(tempC6.getDeviceCount());
 
     // Fire the first conversion so the very first sensors_readAll() call (1+ s
     // after setup) returns valid temperature values rather than DEVICE_DISCONNECTED.
@@ -155,6 +161,9 @@ void sensors_readAll(SensorData* data)
     // complete well within the 1000ms SENSOR_READ_INTERVAL_MS, so these
     // values are always fresh.  Reading first removes 2250ms of blocking
     // that previously locked out the Mega's command-receive loop.
+    data->tempDevicesC2 = tempC2.getDeviceCount();
+    data->tempDevicesC5 = tempC5.getDeviceCount();
+    data->tempDevicesC6 = tempC6.getDeviceCount();
     { float t = tempC2.getTempCByIndex(0); data->rawTempC2 = t; data->tempC2 = cal_applyTemp(0, t); }
     { float t = tempC5.getTempCByIndex(0); data->rawTempC5 = t; data->tempC5 = cal_applyTemp(1, t); }
     { float t = tempC6.getTempCByIndex(0); data->rawTempC6 = t; data->tempC6 = cal_applyTemp(2, t); }

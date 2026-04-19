@@ -90,20 +90,23 @@ void comms_sendData(const SensorData* data,
 
     // ── Calibrated sensor values ─────────────────────────────────────
     sendLine("FLOW",    data->flowRate,    2);
-    sendLine("LVL_C2",  data->levelC2,     1);
-    sendLine("TEMP_C2", data->tempC2,      1);
-    sendLine("PH_C2",   data->phC2,        2);
-    sendLine("TURB_C2", data->turbidityC2, 1);
-    sendLine("LVL_C3",  data->levelC3,     1);
-    sendLine("LVL_C4",  data->levelC4,     1);
-    sendLine("LVL_C5",  data->levelC5,     1);
-    sendLine("TEMP_C5", data->tempC5,      1);
-    sendLine("PH_C5",   data->phC5,        2);
-    sendLine("TURB_C5", data->turbidityC5, 1);
-    sendLine("LVL_C6",  data->levelC6,     1);
-    sendLine("TEMP_C6", data->tempC6,      1);
-    sendLine("PH_C6",   data->phC6,        2);
-    sendLine("TURB_C6", data->turbidityC6, 1);
+    sendLine("LVL_C2",      data->levelC2,        1);
+    sendLine("TEMP_C2",     data->tempC2,         1);
+    sendLine("TEMP_DEV_C2", data->tempDevicesC2,  0);
+    sendLine("PH_C2",       data->phC2,           2);
+    sendLine("TURB_C2",     data->turbidityC2,    1);
+    sendLine("LVL_C3",      data->levelC3,        1);
+    sendLine("LVL_C4",      data->levelC4,        1);
+    sendLine("LVL_C5",      data->levelC5,        1);
+    sendLine("TEMP_C5",     data->tempC5,         1);
+    sendLine("TEMP_DEV_C5", data->tempDevicesC5,  0);
+    sendLine("PH_C5",       data->phC5,           2);
+    sendLine("TURB_C5",     data->turbidityC5,    1);
+    sendLine("LVL_C6",      data->levelC6,        1);
+    sendLine("TEMP_C6",     data->tempC6,         1);
+    sendLine("TEMP_DEV_C6", data->tempDevicesC6,  0);
+    sendLine("PH_C6",       data->phC6,           2);
+    sendLine("TURB_C6",     data->turbidityC6,    1);
 
     // ── Raw (pre-calibration) values — used by the calibration dashboard
     sendLine("RAW_DIST_C2",   data->rawDistC2,   1);

@@ -84,6 +84,11 @@ struct SensorData {
     float rawMvC2;    float rawMvC5;    float rawMvC6;    // pH probe mV
     float rawTurbVC2; float rawTurbVC5; float rawTurbVC6; // turbidity V
     float rawTempC2;  float rawTempC5;  float rawTempC6;  // temp °C (no offset)
+
+    // ── DS18B20 device counts — 0 means sensor not found on that bus ───
+    uint8_t tempDevicesC2;
+    uint8_t tempDevicesC5;
+    uint8_t tempDevicesC6;
 };
 
 /**
