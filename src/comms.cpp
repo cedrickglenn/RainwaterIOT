@@ -251,19 +251,23 @@ static void processCommand(const char* cmd)
     // ── Filter mode ─────────────────────────────────────────────────
     if (strncmp(payload, "FILTER,CHARCOAL", 15) == 0) {
         pipeline_setFilterMode(FILTER_CHARCOAL_ONLY);
+        sendAck("FILTER,CHARCOAL,OK");
         Serial.println(F("[Comms] CMD: Filter -> CHARCOAL only"));
     }
     else if (strncmp(payload, "FILTER,BOTH", 11) == 0) {
         pipeline_setFilterMode(FILTER_CHARCOAL_AND_RO);
+        sendAck("FILTER,BOTH,OK");
         Serial.println(F("[Comms] CMD: Filter -> CHARCOAL + RO"));
     }
     // ── Backwash ────────────────────────────────────────────────────
     else if (strncmp(payload, "BACKWASH,START", 14) == 0) {
         pipeline_startBackwash();
+        sendAck("BACKWASH,START,OK");
         Serial.println(F("[Comms] CMD: Backwash START"));
     }
     else if (strncmp(payload, "BACKWASH,STOP", 13) == 0) {
         pipeline_stopBackwash();
+        sendAck("BACKWASH,STOP,OK");
         Serial.println(F("[Comms] CMD: Backwash STOP"));
     }
     // ── Emergency stop ──────────────────────────────────────────────
@@ -308,6 +312,14 @@ static void processCommand(const char* cmd)
                      String(label ? label : "?") + " unknown — command rejected");
         } else {
             bool opening = (strncmp(action, "ON", 2) == 0);
+            // V1 and V8 are managed by the first flush state machine.
+            // A manual command takes full operator control — reset FF to
+            // IDLE first so the state machine doesn't immediately undo it.
+            if (pin == VALVE1_PIN || pin == VALVE8_PIN) {
+                firstFlush_reset();
+                Serial.println(F("[Comms] V1/V8 manual override — FF reset to IDLE"));
+                logEvent(LOG_INFO, LOG_CAT_ACTUATOR, F("V1/V8 manual — FF reset to IDLE"));
+            }
             if (opening) {
                 valve_open(pin);
             } else {

@@ -128,6 +128,11 @@
 // transient.  3 seconds at typical gutter flow is sufficient.
 #define FLOW_CONFIRM_MS        3000UL  // 3 seconds
 
+// How often the IDLE state pulses V8 open to check for rain.
+// Each pulse lasts FLOW_CONFIRM_MS (3 s); the rest of the interval V8
+// is closed.  60 s interval = ~5% duty cycle — protects valve lifespan.
+#define IDLE_RAIN_CHECK_INTERVAL_MS  60000UL  // 60 seconds
+
 // ── Serial Baud Rates ───────────────────────────────────────────────────
 #define DEBUG_BAUD_RATE        115200 // USB Serial (Serial Monitor / debug)
 #define ESP32_BAUD_RATE        115200  // Serial1 → ESP32 link
