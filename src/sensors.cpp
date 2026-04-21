@@ -47,6 +47,14 @@ static Ultrasonic usC4(US_C4_TRIG, US_C4_ECHO);
 static Ultrasonic usC5(US_C5_TRIG, US_C5_ECHO);
 static Ultrasonic usC6(US_C6_TRIG, US_C6_ECHO);
 
+// Last accepted distance per sensor (cm). -1.0 = no valid reading yet.
+// Used by the outlier-rejection filter to discard physically impossible pings.
+static float usLastGood[5] = { -1.0f, -1.0f, -1.0f, -1.0f, -1.0f };
+
+// Maximum plausible level change between 1-second intervals.
+// Tanks fill/drain slowly — 30 cm/s would require an extraordinary flow rate.
+static const float US_MAX_DELTA_CM = 30.0f;
+
 // ── Temperature Sensors (DS18B20 on separate OneWire buses) ─────────────
 static OneWire            owC2(TEMP_C2_PIN);
 static OneWire            owC5(TEMP_C5_PIN);
@@ -68,25 +76,46 @@ static float lastVoltageC6 = 0.0f;
 // ═════════════════════════════════════════════════════════════════════════
 
 /**
- * Take a single ultrasonic reading and return the distance in cm.
+ * Take a single ultrasonic reading and return the distance in cm,
+ * with outlier rejection to protect pipeline control logic.
  *
- * The previous median-of-3 approach (3 reads + 2×delay(10)) blocked
- * ~110ms per sensor — 550ms for all five — which caused the Mega's
- * command-receive loop to miss the ESP32's ACK drain window.
+ * A reading is rejected (last good value returned instead) if:
+ *   - It is 0 cm      — missed echo / HC-SR04 blind zone
+ *   - It is > 400 cm  — beyond sensor range, no echo returned
+ *   - It jumps > US_MAX_DELTA_CM from the last accepted value —
+ *     physically impossible for a slow-filling/draining tank
  *
- * A single read per 1-second interval is sufficient: the HC-SR04 echo
- * has fully dissipated long before the next trigger, so no inter-read
- * settling delay is needed.  Each call now blocks only ~5ms (typical
- * echo for a 50–100cm water surface) instead of ~110ms.
- *
- * SUGGESTION: If you see occasional wild readings due to surface ripples,
- * implement a ring-buffer median across the last 3 *intervals* instead of
- * 3 rapid reads within one interval — this keeps each call fast while
- * still rejecting outliers.
+ * No blocking delay is added — each call still takes ~5ms.
+ * The last-good store is per-sensor via the idx parameter.
  */
-static float readUltrasonic(Ultrasonic& sensor)
+static float readUltrasonic(Ultrasonic& sensor, uint8_t idx)
 {
-    return (float)sensor.read();
+    float raw = (float)sensor.read();
+
+    // Hard validity bounds — HC-SR04 reliable range is ~2–400 cm
+    if (raw <= 0.0f || raw > 400.0f) {
+        Serial.print(F("[US] Sensor "));
+        Serial.print(idx);
+        Serial.print(F(" rejected (out of range): "));
+        Serial.println(raw);
+        return (usLastGood[idx] >= 0.0f) ? usLastGood[idx] : raw;
+    }
+
+    // Delta check — reject implausible jumps vs last accepted reading
+    if (usLastGood[idx] >= 0.0f) {
+        float delta = fabsf(raw - usLastGood[idx]);
+        if (delta > US_MAX_DELTA_CM) {
+            Serial.print(F("[US] Sensor "));
+            Serial.print(idx);
+            Serial.print(F(" rejected (delta "));
+            Serial.print(delta, 1);
+            Serial.println(F(" cm)"));
+            return usLastGood[idx];
+        }
+    }
+
+    usLastGood[idx] = raw;
+    return raw;
 }
 
 /**
@@ -193,11 +222,11 @@ void sensors_readAll(SensorData* data)
     //    Raw distances are stored for the calibration dashboard so the
     //    operator can see exactly what the sensor reads when setting the
     //    EMPTY / FULL reference distances.
-    { float d = readUltrasonic(usC2); data->rawDistC2 = d; data->levelC2 = cal_applyLevel(0, d); }
-    { float d = readUltrasonic(usC3); data->rawDistC3 = d; data->levelC3 = cal_applyLevel(1, d); }
-    { float d = readUltrasonic(usC4); data->rawDistC4 = d; data->levelC4 = cal_applyLevel(2, d); }
-    { float d = readUltrasonic(usC5); data->rawDistC5 = d; data->levelC5 = cal_applyLevel(3, d); }
-    { float d = readUltrasonic(usC6); data->rawDistC6 = d; data->levelC6 = cal_applyLevel(4, d); }
+    { float d = readUltrasonic(usC2, 0); data->rawDistC2 = d; data->levelC2 = cal_applyLevel(0, d); }
+    { float d = readUltrasonic(usC3, 1); data->rawDistC3 = d; data->levelC3 = cal_applyLevel(1, d); }
+    { float d = readUltrasonic(usC4, 2); data->rawDistC4 = d; data->levelC4 = cal_applyLevel(2, d); }
+    { float d = readUltrasonic(usC5, 3); data->rawDistC5 = d; data->levelC5 = cal_applyLevel(3, d); }
+    { float d = readUltrasonic(usC6, 4); data->rawDistC6 = d; data->levelC6 = cal_applyLevel(4, d); }
 
     // ── pH & turbidity — capture raw voltages, then calibrate ───────
     { float v = sensors_readTurbVoltage(TURB_C2_PIN); data->rawTurbVC2 = v; data->turbidityC2 = cal_applyTurb(0, v); }

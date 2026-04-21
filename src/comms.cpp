@@ -138,6 +138,29 @@ void comms_sendData(const SensorData* data,
     Serial1.print(',');
     Serial1.println((int)bwState);
 
+    // ── Live actuator states — one compact line per telemetry frame ────
+    // Format: S,ACTUATORS,V1:0,V2:1,...,P1:0,...
+    // Sent inside comms_sendData() so it never competes with a command's
+    // ACK drain window on the ESP32 side (which only opens after a C,*
+    // command is sent, not during periodic telemetry).
+    // The bridge uses this to update actuator_states with confirmed:true,
+    // reflecting reality even when the Mega acts autonomously (overflow
+    // protection, dry-run guard, etc.).
+    Serial1.print(F("S,ACTUATORS"));
+    for (uint8_t i = 0; i < VALVE_COUNT; i++) {
+        Serial1.print(',');
+        Serial1.print(VALVE_MAP[i].label);
+        Serial1.print(':');
+        Serial1.print(actuator_isOn(VALVE_MAP[i].pin) ? '1' : '0');
+    }
+    for (uint8_t i = 0; i < PUMP_COUNT; i++) {
+        Serial1.print(',');
+        Serial1.print(PUMP_MAP[i].label);
+        Serial1.print(':');
+        Serial1.print(actuator_isOn(PUMP_MAP[i].pin) ? '1' : '0');
+    }
+    Serial1.println();
+
     // SUGGESTION: Append a message sequence number so the ESP32 can
     //             detect missed frames:
     //   static uint32_t seqNum = 0;

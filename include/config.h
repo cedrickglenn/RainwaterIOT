@@ -63,22 +63,23 @@
 // The gap between them is the hysteresis band (prevents relay chatter).
 
 // Container 2 (buffer storage — receives rainwater from catchment)
-#define C2_LEVEL_HIGH_CM       20    // Start pumping to charcoal filter
-#define C2_LEVEL_LOW_CM        80    // Stop pumping — too low / dry-run risk
-// SUGGESTION: Add a C2_LEVEL_OVERFLOW_CM (~10 cm) to trigger an alarm or
-//             overflow valve if something blocks the outlet.
+#define C2_LEVEL_OVERFLOW      95    // % — emergency stop: tank about to overflow
+#define C2_LEVEL_HIGH_CM       20    // % — start pumping to charcoal filter
+#define C2_LEVEL_LOW_CM        80    // % — stop pumping (dry-run risk)
 
 // Container 3 (charcoal filter vessel — thresholds used during backwash)
 #define C3_BACKWASH_FULL_CM    15    // Near overflow → open drain valves
 #define C3_BACKWASH_EMPTY_CM   90    // Fully drained → close drain, refill
 
 // Container 4 (pre-commercial RO buffer)
-#define C4_LEVEL_HIGH_CM       20    // Enough water → run pump 2
-#define C4_LEVEL_LOW_CM        80    // Too low → stop pump 2
+#define C4_LEVEL_OVERFLOW      95    // % — emergency stop: tank about to overflow
+#define C4_LEVEL_HIGH_CM       20    // % — enough water → run pump 2
+#define C4_LEVEL_LOW_CM        80    // % — too low → stop pump 2
 
 // Container 5 (quality-check tank — water tested here before final storage)
-#define C5_LEVEL_HIGH_CM       25    // Enough water to test and pump out
-#define C5_LEVEL_LOW_CM        80    // Too low → stop
+#define C5_LEVEL_OVERFLOW      95    // % — emergency stop: tank about to overflow
+#define C5_LEVEL_HIGH_CM       25    // % — enough water to test and pump out
+#define C5_LEVEL_LOW_CM        80    // % — too low → stop
 
 // Container 6 (final potable storage) — CRITICAL safety thresholds
 #define C6_LEVEL_FULL_CM       15    // FULL → EMERGENCY STOP ALL processes!

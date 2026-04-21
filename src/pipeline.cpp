@@ -49,6 +49,13 @@ static void stage_container2(const SensorData* data)
     // Backwash takes exclusive control of this path
     if (backwashState != BW_IDLE) return;
 
+    // Overflow guard — stop all inflow if C2 is nearly full
+    if (data->levelC2 >= (float)C2_LEVEL_OVERFLOW) {
+        valve_close(VALVE1_PIN);
+        logEvent(LOG_WARNING, LOG_CAT_SYSTEM, F("C2 overflow protection: inlet closed"));
+        return;
+    }
+
     bool levelHigh = (data->levelC2 <= (float)C2_LEVEL_HIGH_CM);
     bool levelLow  = (data->levelC2 >= (float)C2_LEVEL_LOW_CM);
 
@@ -78,10 +85,6 @@ static void stage_container2(const SensorData* data)
         if (wasRunning) {
             logEvent(LOG_ERROR, LOG_CAT_PUMP, F("P1 dry-run protection triggered"));
         }
-
-        // SUGGESTION: Add a cool-down timer (e.g., 60 s) before allowing
-        //             pump 1 to restart.  Rapid on/off cycling wears out
-        //             relay contacts and shortens pump motor life.
     }
 }
 
@@ -184,6 +187,17 @@ static void stage_container4(const SensorData* data)
         return;
     }
 
+    // Overflow guard — C4 nearly full, stop ALL inflow paths
+    if (data->levelC4 >= (float)C4_LEVEL_OVERFLOW) {
+        pump_stop(PUMP1_PIN);      // C2 → charcoal filter pump (feeds V4)
+        valve_close(VALVE2_PIN);   // C2 → charcoal filter inlet
+        valve_close(VALVE4_PIN);   // charcoal filter → C4
+        valve_close(VALVE6_PIN);   // C5 recycle → C4
+        pump_stop(PUMP4_PIN);      // C5 recycle booster
+        logEvent(LOG_WARNING, LOG_CAT_SYSTEM, F("C4 overflow protection: inflow stopped"));
+        return;
+    }
+
     bool levelHigh = (data->levelC4 <= (float)C4_LEVEL_HIGH_CM);
     bool levelLow  = (data->levelC4 >= (float)C4_LEVEL_LOW_CM);
 
@@ -221,6 +235,13 @@ static void stage_container4(const SensorData* data)
 //
 static void stage_container5(const SensorData* data)
 {
+    // Overflow guard — C5 nearly full, stop RO inflow
+    if (data->levelC5 >= (float)C5_LEVEL_OVERFLOW) {
+        pump_stop(PUMP2_PIN);   // RO filter → C5
+        logEvent(LOG_WARNING, LOG_CAT_SYSTEM, F("C5 overflow protection: RO pump stopped"));
+        return;
+    }
+
     bool hasWater = (data->levelC5 <= (float)C5_LEVEL_HIGH_CM);
     bool levelLow = (data->levelC5 >= (float)C5_LEVEL_LOW_CM);
 
