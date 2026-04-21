@@ -69,11 +69,11 @@
 #define US_C3_TRIG   42   // Container 3 — charcoal filter level (backwash monitoring)
 #define US_C3_ECHO   41
 
-#define US_C4_TRIG   39   // Container 4 — pre-commercial RO buffer level
-#define US_C4_ECHO   38
+#define US_C4_TRIG   36   // Container 4 — pre-commercial RO buffer level
+#define US_C4_ECHO   35
 
-#define US_C5_TRIG   36   // Container 5 — post-treatment quality-check tank level
-#define US_C5_ECHO   35
+#define US_C5_TRIG   39   // Container 5 — post-treatment quality-check tank level
+#define US_C5_ECHO   38
 
 #define US_C6_TRIG   53   // Container 6 — final potable water storage level
 #define US_C6_ECHO   52
