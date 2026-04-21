@@ -60,6 +60,32 @@ static unsigned long lastTxMs = 0;
 static char    rxBuf[RX_BUF_SIZE];
 static uint8_t rxIdx = 0;
 
+// ── Actuator lookup tables ────────────────────────────────────────────────
+struct ActuatorEntry {
+    const char* label;
+    uint8_t     pin;
+};
+
+static const ActuatorEntry VALVE_MAP[] = {
+    { "V1", VALVE1_PIN },
+    { "V2", VALVE2_PIN },
+    { "V3", VALVE3_PIN },
+    { "V4", VALVE4_PIN },
+    { "V5", VALVE5_PIN },
+    { "V6", VALVE6_PIN },
+    { "V7", VALVE7_PIN },
+    { "V8", VALVE8_PIN },
+};
+static const uint8_t VALVE_COUNT = sizeof(VALVE_MAP) / sizeof(VALVE_MAP[0]);
+
+static const ActuatorEntry PUMP_MAP[] = {
+    { "P1", PUMP1_PIN },
+    { "P2", PUMP2_PIN },
+    { "P3", PUMP3_PIN },
+    { "P4", PUMP4_PIN },
+};
+static const uint8_t PUMP_COUNT = sizeof(PUMP_MAP) / sizeof(PUMP_MAP[0]);
+
 // ═════════════════════════════════════════════════════════════════════════
 void comms_init()
 {
@@ -201,36 +227,6 @@ static void sendAck(const char* fields)
     Serial.print(F("[ACK] A,"));
     Serial.println(fields);
 }
-
-// ── Actuator lookup tables ────────────────────────────────────────────────
-// Maps label strings ("V1"–"V8", "P1"–"P4") to their pin numbers.
-// Add or reorder entries here if pin assignments ever change — no other
-// code needs to change.
-
-struct ActuatorEntry {
-    const char* label;
-    uint8_t     pin;
-};
-
-static const ActuatorEntry VALVE_MAP[] = {
-    { "V1", VALVE1_PIN },
-    { "V2", VALVE2_PIN },
-    { "V3", VALVE3_PIN },
-    { "V4", VALVE4_PIN },
-    { "V5", VALVE5_PIN },
-    { "V6", VALVE6_PIN },
-    { "V7", VALVE7_PIN },
-    { "V8", VALVE8_PIN },
-};
-static const uint8_t VALVE_COUNT = sizeof(VALVE_MAP) / sizeof(VALVE_MAP[0]);
-
-static const ActuatorEntry PUMP_MAP[] = {
-    { "P1", PUMP1_PIN },
-    { "P2", PUMP2_PIN },
-    { "P3", PUMP3_PIN },
-    { "P4", PUMP4_PIN },
-};
-static const uint8_t PUMP_COUNT = sizeof(PUMP_MAP) / sizeof(PUMP_MAP[0]);
 
 // Returns pin for a given label, or 255 if not found.
 static uint8_t lookupActuator(const ActuatorEntry* table, uint8_t count, const char* label)
