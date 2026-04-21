@@ -146,20 +146,23 @@ void comms_sendData(const SensorData* data,
     // The bridge uses this to update actuator_states with confirmed:true,
     // reflecting reality even when the Mega acts autonomously (overflow
     // protection, dry-run guard, etc.).
-    Serial1.print(F("S,ACTUATORS"));
+    // Build the entire ACTUATORS line in one buffer and send with a single
+    // println() so the \n is never separated from the payload by a buffer flush.
+    // "S,ACTUATORS,V1:0,V2:0,...,P4:0" = ~44 chars — fits easily in 64 bytes.
+    char actBuf[80];   // 11 ("S,ACTUATORS") + 12×5 (",V1:0") = 71 chars + \0
+    uint8_t pos = 0;
+    pos += snprintf(actBuf + pos, sizeof(actBuf) - pos, "S,ACTUATORS");
     for (uint8_t i = 0; i < VALVE_COUNT; i++) {
-        Serial1.print(',');
-        Serial1.print(VALVE_MAP[i].label);
-        Serial1.print(':');
-        Serial1.print(actuator_isOn(VALVE_MAP[i].pin) ? '1' : '0');
+        pos += snprintf(actBuf + pos, sizeof(actBuf) - pos, ",%s:%c",
+                        VALVE_MAP[i].label,
+                        actuator_isOn(VALVE_MAP[i].pin) ? '1' : '0');
     }
     for (uint8_t i = 0; i < PUMP_COUNT; i++) {
-        Serial1.print(',');
-        Serial1.print(PUMP_MAP[i].label);
-        Serial1.print(':');
-        Serial1.print(actuator_isOn(PUMP_MAP[i].pin) ? '1' : '0');
+        pos += snprintf(actBuf + pos, sizeof(actBuf) - pos, ",%s:%c",
+                        PUMP_MAP[i].label,
+                        actuator_isOn(PUMP_MAP[i].pin) ? '1' : '0');
     }
-    Serial1.println();
+    Serial1.println(actBuf);
 
     // SUGGESTION: Append a message sequence number so the ESP32 can
     //             detect missed frames:
