@@ -3,6 +3,7 @@
 #include "config.h"
 #include "actuators.h"
 #include "logger.h"
+#include "calibration.h"
 
 /*
  * ═══════════════════════════════════════════════════════════════════════════
@@ -50,9 +51,19 @@ static void stage_container2(const SensorData* data)
     if (backwashState != BW_IDLE) return;
 
     // Overflow guard — stop all inflow if C2 is nearly full
-    if (data->levelC2 >= (float)C2_LEVEL_OVERFLOW) {
+    if (cal_isLevelCalibrated(0) && data->levelC2 >= (float)C2_LEVEL_OVERFLOW) {
         valve_close(VALVE1_PIN);
         logEvent(LOG_WARNING, LOG_CAT_SYSTEM, F("C2 overflow protection: inlet closed"));
+        return;
+    }
+
+    // Overflow guard — C3 nearly full, stop feeding it
+    if (cal_isLevelCalibrated(1) && data->levelC3 >= (float)C3_LEVEL_OVERFLOW) {
+        pump_stop(PUMP1_PIN);
+        valve_close(VALVE2_PIN);
+        valve_close(VALVE3_PIN);
+        valve_close(VALVE4_PIN);
+        logEvent(LOG_WARNING, LOG_CAT_SYSTEM, F("C3 overflow protection: feed stopped"));
         return;
     }
 
@@ -107,6 +118,14 @@ static void stage_backwash(const SensorData* data)
 {
     if (backwashState == BW_IDLE || backwashState == BW_COMPLETE) return;
 
+    // Overflow guard — stop feed if C3 is at overflow
+    if (cal_isLevelCalibrated(1) && data->levelC3 >= (float)C3_LEVEL_OVERFLOW) {
+        pump_stop(PUMP1_PIN);
+        valve_close(VALVE2_PIN);
+        logEvent(LOG_WARNING, LOG_CAT_SYSTEM, F("C3 overflow protection: feed stopped"));
+        return;
+    }
+
     switch (backwashState) {
 
         case BW_FILLING:
@@ -117,7 +136,7 @@ static void stage_backwash(const SensorData* data)
             valve_close(VALVE4_PIN);
 
             // Has the filter vessel filled to the target level?
-            if (data->levelC3 <= (float)C3_BACKWASH_FULL_CM) {
+            if (cal_isLevelCalibrated(1) && data->levelC3 >= (float)C3_LEVEL_OVERFLOW) {
                 // Full enough — switch to draining
                 pump_stop(PUMP1_PIN);
                 valve_close(VALVE2_PIN);
@@ -188,7 +207,7 @@ static void stage_container4(const SensorData* data)
     }
 
     // Overflow guard — C4 nearly full, stop ALL inflow paths
-    if (data->levelC4 >= (float)C4_LEVEL_OVERFLOW) {
+    if (cal_isLevelCalibrated(2) && data->levelC4 >= (float)C4_LEVEL_OVERFLOW) {
         pump_stop(PUMP1_PIN);      // C2 → charcoal filter pump (feeds V4)
         valve_close(VALVE2_PIN);   // C2 → charcoal filter inlet
         valve_close(VALVE4_PIN);   // charcoal filter → C4
@@ -236,7 +255,7 @@ static void stage_container4(const SensorData* data)
 static void stage_container5(const SensorData* data)
 {
     // Overflow guard — C5 nearly full, stop RO inflow
-    if (data->levelC5 >= (float)C5_LEVEL_OVERFLOW) {
+    if (cal_isLevelCalibrated(3) && data->levelC5 >= (float)C5_LEVEL_OVERFLOW) {
         pump_stop(PUMP2_PIN);   // RO filter → C5
         logEvent(LOG_WARNING, LOG_CAT_SYSTEM, F("C5 overflow protection: RO pump stopped"));
         return;
@@ -305,14 +324,18 @@ static void stage_container5(const SensorData* data)
 //
 static void stage_container6(const SensorData* data)
 {
-    if (data->levelC6 <= (float)C6_LEVEL_FULL_CM) {
+    // Skip entirely if C6 level sensor is not yet calibrated — prevents
+    // factory-default readings from triggering a spurious emergency stop.
+    if (!cal_isLevelCalibrated(4)) return;
+
+    if (data->levelC6 >= (float)C6_LEVEL_OVERFLOW) {
         // ═══ CONTAINER 6 IS FULL — EMERGENCY STOP ═══
         if (!emergencyStopped) {
             Serial.println(F("!!! CONTAINER 6 FULL — EMERGENCY STOP !!!"));
             pipeline_emergencyStop();
         }
     }
-    else if (data->levelC6 >= (float)C6_LEVEL_RESUME_CM) {
+    else if (data->levelC6 <= (float)C6_LEVEL_RESUME) {
         // Water has been consumed / dropped enough to resume
         if (emergencyStopped) {
             emergencyStopped = false;
@@ -403,7 +426,7 @@ BackwashState pipeline_getBackwashState()
 // ─────────────────────────────────────────────────────────────────────────
 bool pipeline_isTankFull(const SensorData* data)
 {
-    return (data->levelC6 <= (float)C6_LEVEL_FULL_CM);
+    return cal_isLevelCalibrated(4) && (data->levelC6 >= (float)C6_LEVEL_OVERFLOW);
 }
 
 // ─────────────────────────────────────────────────────────────────────────

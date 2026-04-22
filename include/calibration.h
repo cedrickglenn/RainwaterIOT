@@ -45,7 +45,7 @@
 #include <EEPROM.h>
 
 // ── EEPROM magic ─────────────────────────────────────────────────────────
-#define EEPROM_MAGIC        0xCAFE
+#define EEPROM_MAGIC        0xCAFF  // bumped from 0xCAFE — forces EEPROM reset after struct change
 #define EEPROM_MAGIC_ADDR   0x0000
 
 // ── Sensor count constants ────────────────────────────────────────────────
@@ -65,8 +65,9 @@ struct TurbCalData {
 };
 
 struct LevelCalData {
-    float emptyCm;  // Ultrasonic reading (cm) when container is empty
-    float fullCm;   // Ultrasonic reading (cm) when container is full
+    float emptyCm;    // Ultrasonic reading (cm) when container is empty
+    float fullCm;     // Ultrasonic reading (cm) when container is full
+    bool  calibrated; // true only after a real CAL_LEVEL command — guards overflow logic
 };
 
 // ── Master calibration struct ─────────────────────────────────────────────
@@ -128,6 +129,15 @@ float cal_applyTurb(uint8_t idx, float volt);
  * @param rawCm  Raw distance reading in cm
  */
 float cal_applyLevel(uint8_t idx, float rawCm);
+
+/**
+ * Returns true only if the level sensor at idx has been explicitly
+ * calibrated via a CAL_LEVEL command (not just factory defaults).
+ * Overflow guards must check this before acting.
+ *
+ * @param idx  Level sensor index: 0=C2, 1=C3, 2=C4, 3=C5, 4=C6
+ */
+bool cal_isLevelCalibrated(uint8_t idx);
 
 /**
  * Apply temperature offset correction.

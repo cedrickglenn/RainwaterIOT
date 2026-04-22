@@ -47,13 +47,13 @@ static const CalibrationData DEFAULTS = {
         { 4.2f, 320.0f },   // C6
     },
 
-    // level[5]: {emptyCm, fullCm} — [0]=C2,[1]=C3,[2]=C4,[3]=C5,[4]=C6
+    // level[5]: {emptyCm, fullCm, calibrated} — [0]=C2,[1]=C3,[2]=C4,[3]=C5,[4]=C6
     .level = {
-        { 100.0f, 10.0f },  // C2
-        { 100.0f, 10.0f },  // C3
-        { 100.0f, 10.0f },  // C4
-        { 100.0f, 10.0f },  // C5
-        { 100.0f, 10.0f },  // C6
+        { 100.0f, 10.0f, false },  // C2
+        { 100.0f, 10.0f, false },  // C3
+        { 100.0f, 10.0f, false },  // C4
+        { 100.0f, 10.0f, false },  // C5
+        { 100.0f, 10.0f, false },  // C6
     },
 
     // tempOffset[3] — °C correction
@@ -159,4 +159,10 @@ float cal_applyTemp(uint8_t idx, float rawC)
 {
     if (idx >= CAL_QTY_SENSORS) return rawC;
     return rawC + calData.tempOffset[idx];
+}
+
+bool cal_isLevelCalibrated(uint8_t idx)
+{
+    if (idx >= CAL_LVL_SENSORS) return false;
+    return calData.level[idx].calibrated;
 }

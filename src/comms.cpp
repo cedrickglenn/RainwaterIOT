@@ -514,7 +514,8 @@ static void processCommand(const char* cmd)
             logEvent(LOG_INFO, LOG_CAT_CALIBRATION, F("Level saved to EEPROM"));
         }
         else if (strncmp(point, "FULL", 4) == 0) {
-            calData.level[idx].fullCm = distCm;
+            calData.level[idx].fullCm     = distCm;
+            calData.level[idx].calibrated = true;
             cal_save();
             char ack[48];
             snprintf(ack, sizeof(ack), "CAL_LVL,%s,FULL,OK,%.1f", container, distCm);

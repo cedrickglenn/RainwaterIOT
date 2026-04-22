@@ -67,9 +67,9 @@
 #define C2_LEVEL_HIGH_CM       20    // % — start pumping to charcoal filter
 #define C2_LEVEL_LOW_CM        80    // % — stop pumping (dry-run risk)
 
-// Container 3 (charcoal filter vessel — thresholds used during backwash)
-#define C3_BACKWASH_FULL_CM    15    // Near overflow → open drain valves
-#define C3_BACKWASH_EMPTY_CM   90    // Fully drained → close drain, refill
+// Container 3 (charcoal filter vessel)
+#define C3_LEVEL_OVERFLOW      95    // % — full: stop feed in normal AND backwash mode
+#define C3_BACKWASH_EMPTY_CM   90    // cm — fully drained → close drain, refill
 
 // Container 4 (pre-commercial RO buffer)
 #define C4_LEVEL_OVERFLOW      95    // % — emergency stop: tank about to overflow
@@ -82,8 +82,8 @@
 #define C5_LEVEL_LOW_CM        80    // % — too low → stop
 
 // Container 6 (final potable storage) — CRITICAL safety thresholds
-#define C6_LEVEL_FULL_CM       15    // FULL → EMERGENCY STOP ALL processes!
-#define C6_LEVEL_RESUME_CM     30    // Water consumed enough → allow resume
+#define C6_LEVEL_OVERFLOW      95    // % — FULL → EMERGENCY STOP ALL processes!
+#define C6_LEVEL_RESUME        80    // % — consumed enough → allow resume
 // SUGGESTION: Install a physical float switch as a redundant hardware
 //             backup for Container 6.  Software-only overflow protection
 //             is a single point of failure.
