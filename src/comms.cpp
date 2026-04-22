@@ -563,6 +563,58 @@ static void processCommand(const char* cmd)
         cal_reset();
         sendAck("CAL_RESET,OK");
     }
+    // ── Calibration mode toggle ──────────────────────────────────────
+    //    Format: C,CAL_MODE,ON|OFF
+    //    ACK:    A,CAL_MODE,ON,OK  or  A,CAL_MODE,OFF,OK
+    //    ON:  suspends first flush state machine and closes V1+V8 so the
+    //         operator has clean manual valve control during calibration.
+    //    OFF: re-enables first flush and resets it to IDLE.
+    else if (strncmp(payload, "CAL_MODE,", 9) == 0)
+    {
+        const char* modeStr = payload + 9;
+        if (strncmp(modeStr, "ON", 2) == 0) {
+            firstFlush_setCalMode(true);
+            valve_close(VALVE1_PIN);
+            valve_close(VALVE8_PIN);
+            sendAck("CAL_MODE,ON,OK");
+            logEvent(LOG_INFO, LOG_CAT_CALIBRATION, F("Calibration mode ON — FF suspended"));
+        } else if (strncmp(modeStr, "OFF", 3) == 0) {
+            firstFlush_setCalMode(false);
+            firstFlush_reset();
+            sendAck("CAL_MODE,OFF,OK");
+            logEvent(LOG_INFO, LOG_CAT_CALIBRATION, F("Calibration mode OFF — FF resumed"));
+        } else {
+            sendAck("CAL_MODE,ERR,BAD_PARAM");
+        }
+    }
+    // ── First flush runtime configuration ───────────────────────────
+    //    Format: C,FF_CONFIG,THRESHOLD,<lpm>   — flow trigger (L/min)
+    //            C,FF_CONFIG,DURATION,<ms>      — flush duration (ms)
+    //    ACK:    A,FF_CONFIG,THRESHOLD,OK,<val>
+    //            A,FF_CONFIG,DURATION,OK,<val>
+    else if (strncmp(payload, "FF_CONFIG,", 10) == 0)
+    {
+        const char* sub = payload + 10;
+        if (strncmp(sub, "THRESHOLD,", 10) == 0) {
+            float lpm = atof(sub + 10);
+            sensors_setFlowThreshold(lpm);
+            char ack[40];
+            snprintf(ack, sizeof(ack), "FF_CONFIG,THRESHOLD,OK,%.2f", lpm);
+            sendAck(ack);
+            logEvent(LOG_INFO, LOG_CAT_FILTER,
+                     String("FF threshold -> ") + String(lpm, 2) + " L/min");
+        } else if (strncmp(sub, "DURATION,", 9) == 0) {
+            unsigned long ms = (unsigned long)atol(sub + 9);
+            firstFlush_setDuration(ms);
+            char ack[40];
+            snprintf(ack, sizeof(ack), "FF_CONFIG,DURATION,OK,%lu", ms);
+            sendAck(ack);
+            logEvent(LOG_INFO, LOG_CAT_FILTER,
+                     String("FF duration -> ") + String(ms / 1000UL) + " s");
+        } else {
+            sendAck("FF_CONFIG,ERR,BAD_PARAM");
+        }
+    }
     // ── Unknown ─────────────────────────────────────────────────────
     else {
         Serial.print(F("[Comms] Unknown command: "));

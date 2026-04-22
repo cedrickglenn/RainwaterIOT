@@ -37,6 +37,14 @@
 // ── Module state ────────────────────────────────────────────────────────
 static FirstFlushState state = FF_IDLE;
 
+// Flush duration — how long consistent flow must be diverted before COLLECTING.
+// Settable at runtime via firstFlush_setDuration(); defaults to compile-time constant.
+static unsigned long ffDurationMs = FIRST_FLUSH_DURATION_MS;
+
+// When true, firstFlush_update() is skipped and firstFlush_reset() suppresses
+// the V8 idle pulse. Lets the operator hold valves manually during calibration.
+static bool calModeActive = false;
+
 static unsigned long confirmStartMs   = 0;  // when sustained flow first seen (CONFIRMING)
 static unsigned long divertStartMs    = 0;  // when diversion began
 static unsigned long flowConsistentMs = 0;  // accumulated consistent-flow time
@@ -79,6 +87,8 @@ void firstFlush_init()
 // ═════════════════════════════════════════════════════════════════════════
 void firstFlush_update(bool flowActive)
 {
+    if (calModeActive) return;
+
     unsigned long now = millis();
 
     switch (state) {
@@ -136,7 +146,7 @@ void firstFlush_update(bool flowActive)
                 flowConsistentMs += (now - lastFlowSeenMs);
                 lastFlowSeenMs = now;
 
-                if (flowConsistentMs >= FIRST_FLUSH_DURATION_MS) {
+                if (flowConsistentMs >= ffDurationMs) {
                     // First flush complete — transition to collection
                     state = FF_COLLECTING;
                     valve_close(VALVE8_PIN);
@@ -193,6 +203,13 @@ FirstFlushState firstFlush_getState()
 // ═════════════════════════════════════════════════════════════════════════
 void firstFlush_reset()
 {
+    // In calibration mode the operator holds full valve control —
+    // skip the reset entirely so V8 doesn't pulse open unexpectedly.
+    if (calModeActive) {
+        Serial.println(F("[FirstFlush] RESET suppressed (cal mode active)"));
+        return;
+    }
+
     unsigned long now = millis();
     state = FF_IDLE;
     valve_close(VALVE1_PIN);
@@ -200,4 +217,21 @@ void firstFlush_reset()
     enterIdlePulse(now);
     logEvent(LOG_INFO, LOG_CAT_FILTER, F("FF_IDLE"));
     Serial.println(F("[FirstFlush] RESET -> IDLE (V8 pulse)"));
+}
+
+// ═════════════════════════════════════════════════════════════════════════
+void firstFlush_setCalMode(bool enable)
+{
+    calModeActive = enable;
+    Serial.print(F("[FirstFlush] Cal mode: "));
+    Serial.println(enable ? F("ON (state machine suspended)") : F("OFF (resumed)"));
+}
+
+// ═════════════════════════════════════════════════════════════════════════
+void firstFlush_setDuration(unsigned long ms)
+{
+    ffDurationMs = ms;
+    Serial.print(F("[FirstFlush] Flush duration set to "));
+    Serial.print(ms / 1000UL);
+    Serial.println(F(" s"));
 }

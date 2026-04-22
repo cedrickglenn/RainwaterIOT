@@ -115,4 +115,17 @@ FirstFlushState firstFlush_getState();
  */
 void firstFlush_reset();
 
+/**
+ * Enable or disable calibration mode.
+ * When enabled: firstFlush_update() is a no-op and firstFlush_reset()
+ * skips the V8 idle pulse, giving the operator clean manual valve control.
+ */
+void firstFlush_setCalMode(bool enable);
+
+/**
+ * Set the flush duration (how long consistent flow must be diverted
+ * before transitioning to COLLECTING). Default: FIRST_FLUSH_DURATION_MS.
+ */
+void firstFlush_setDuration(unsigned long ms);
+
 #endif // FIRST_FLUSH_H

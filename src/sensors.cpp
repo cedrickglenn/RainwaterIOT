@@ -34,6 +34,10 @@ static FlowSensor     flowSensor(YFS201, FLOW_SENSOR_PIN);
 static float          lastFlowRate      = 0.0f;
 static unsigned long  lastTotalPulses   = 0UL;  // for computing per-interval delta
 
+// Flow threshold — settable at runtime via sensors_setFlowThreshold().
+// Defaults to the compile-time constant so existing behaviour is unchanged.
+static float          flowThreshold     = FLOW_MIN_THRESHOLD;
+
 // The ISR must be a plain free function (no captures / member pointers).
 void sensors_flowISR()
 {
@@ -54,6 +58,12 @@ static float usLastGood[5] = { -1.0f, -1.0f, -1.0f, -1.0f, -1.0f };
 // Maximum plausible level change between 1-second intervals.
 // Tanks fill/drain slowly — 30 cm/s would require an extraordinary flow rate.
 static const float US_MAX_DELTA_CM = 30.0f;
+
+// 3-slot ring buffer for median smoothing across successive 1-second intervals.
+// Zero blocking time — one read per call, median computed from the last 3 results.
+static float   usRingBuf[5][3]  = {};
+static uint8_t usRingIdx[5]     = {};
+static uint8_t usRingCount[5]   = {};  // saturates at 3 once buffer is full
 
 // ── Temperature Sensors (DS18B20 on separate OneWire buses) ─────────────
 static OneWire            owC2(TEMP_C2_PIN);
@@ -115,7 +125,24 @@ static float readUltrasonic(Ultrasonic& sensor, uint8_t idx)
     }
 
     usLastGood[idx] = raw;
-    return raw;
+
+    // Store accepted reading into the ring buffer and return the median.
+    // On the first two calls the buffer isn't full yet — return raw directly
+    // so pipeline logic has a valid value from the very first interval.
+    usRingBuf[idx][usRingIdx[idx]] = raw;
+    usRingIdx[idx] = (usRingIdx[idx] + 1) % 3;
+    if (usRingCount[idx] < 3) {
+        usRingCount[idx]++;
+        return raw;
+    }
+
+    // Median of 3 via two-swap sort (no library needed, runs in ~6 comparisons).
+    float a = usRingBuf[idx][0], b = usRingBuf[idx][1], c = usRingBuf[idx][2];
+    if (a > b) { float t = a; a = b; b = t; }
+    if (b > c) { float t = b; b = c; c = t; }
+    if (a > b) { float t = a; a = b; b = t; }
+    (void)a; (void)c;  // only the middle value is used
+    return b;
 }
 
 /**
@@ -214,7 +241,7 @@ void sensors_readAll(SensorData* data)
     // isfinite() rejects inf/nan; FLOW_MIN_THRESHOLD rejects the noise floor.
     {
         float raw      = flowSensor.getFlowRate_m();
-        lastFlowRate   = (isfinite(raw) && raw >= FLOW_MIN_THRESHOLD) ? raw : 0.0f;
+        lastFlowRate   = (isfinite(raw) && raw >= flowThreshold) ? raw : 0.0f;
         data->flowRate = lastFlowRate;
     }
 
@@ -259,5 +286,14 @@ void sensors_readAll(SensorData* data)
 // ─────────────────────────────────────────────────────────────────────────
 bool sensors_isFlowActive()
 {
-    return (lastFlowRate >= FLOW_MIN_THRESHOLD);
+    return (lastFlowRate >= flowThreshold);
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+void sensors_setFlowThreshold(float lpm)
+{
+    flowThreshold = lpm;
+    Serial.print(F("[Sensors] Flow threshold set to "));
+    Serial.print(lpm, 2);
+    Serial.println(F(" L/min"));
 }

@@ -127,4 +127,11 @@ void sensors_flowISR();
  */
 float sensors_readTurbVoltage(uint8_t analogPin);
 
+/**
+ * Set the minimum flow rate (L/min) considered "active flow".
+ * Values below this threshold are treated as zero (noise floor).
+ * Default: FLOW_MIN_THRESHOLD from config.h.
+ */
+void sensors_setFlowThreshold(float lpm);
+
 #endif // SENSORS_H
