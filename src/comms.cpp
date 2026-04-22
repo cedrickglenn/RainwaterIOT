@@ -104,6 +104,52 @@ static void sendLine(const char* key, float value, uint8_t decimals = 2)
     Serial1.println(value, decimals);
 }
 
+// ── Helper: broadcast all calData values as S, telemetry lines ──────────
+static void sendCalData()
+{
+    static const char* LVL_LABELS[] = { "C2", "C3", "C4", "C5", "C6" };
+    static const char* QTY_LABELS[] = { "C2", "C5", "C6" };
+
+    char key[32];
+
+    // Level calibration (0=C2, 1=C3, 2=C4, 3=C5, 4=C6)
+    for (uint8_t i = 0; i < CAL_LVL_SENSORS; i++) {
+        snprintf(key, sizeof(key), "CAL_LVL_%s_EMPTY", LVL_LABELS[i]);
+        sendLine(key, calData.level[i].emptyCm, 1);
+        snprintf(key, sizeof(key), "CAL_LVL_%s_FULL", LVL_LABELS[i]);
+        sendLine(key, calData.level[i].fullCm, 1);
+        Serial1.print(F("S,CAL_LVL_"));
+        Serial1.print(LVL_LABELS[i]);
+        Serial1.print(F("_CAL,"));
+        Serial1.println(calData.level[i].calibrated ? 1 : 0);
+    }
+
+    // pH calibration (0=C2, 1=C5, 2=C6)
+    for (uint8_t i = 0; i < CAL_QTY_SENSORS; i++) {
+        snprintf(key, sizeof(key), "CAL_PH_%s_NEUTRAL", QTY_LABELS[i]);
+        sendLine(key, calData.ph[i].neutralV, 1);
+        snprintf(key, sizeof(key), "CAL_PH_%s_ACID", QTY_LABELS[i]);
+        sendLine(key, calData.ph[i].acidV, 1);
+    }
+
+    // Turbidity calibration (0=C2, 1=C5, 2=C6)
+    for (uint8_t i = 0; i < CAL_QTY_SENSORS; i++) {
+        snprintf(key, sizeof(key), "CAL_TURB_%s_ZERO", QTY_LABELS[i]);
+        sendLine(key, calData.turb[i].zeroV, 3);
+        snprintf(key, sizeof(key), "CAL_TURB_%s_SLOPE", QTY_LABELS[i]);
+        sendLine(key, calData.turb[i].slopeNTUperV, 1);
+    }
+
+    // Temperature offsets (0=C2, 1=C5, 2=C6)
+    for (uint8_t i = 0; i < CAL_QTY_SENSORS; i++) {
+        snprintf(key, sizeof(key), "CAL_TEMP_%s_OFFSET", QTY_LABELS[i]);
+        sendLine(key, calData.tempOffset[i], 2);
+    }
+
+    // Flow
+    sendLine("CAL_FLOW_PPL", calData.flowPPL, 1);
+}
+
 // ═════════════════════════════════════════════════════════════════════════
 void comms_sendData(const SensorData* data,
                     FirstFlushState   ffState,
@@ -189,6 +235,9 @@ void comms_sendData(const SensorData* data,
                         actuator_isOn(PUMP_MAP[i].pin) ? '1' : '0');
     }
     Serial1.println(actBuf);
+
+    // ── Current calibration state from EEPROM ────────────────────────
+    sendCalData();
 
     // SUGGESTION: Append a message sequence number so the ESP32 can
     //             detect missed frames:
