@@ -31,9 +31,10 @@ static uint8_t       backwashCyclesDone = 0;
 static bool          emergencyStopped   = false;
 
 // Overflow latches — log the warning once per overflow event, not every tick.
-// Cleared when the level drops back below the overflow threshold.
+// Cleared only after level drops back to the *_LEVEL_RESUME threshold (hysteresis).
 static bool overflowC2 = false;
 static bool overflowC3 = false;
+static bool overflowC4 = false;
 static bool overflowC5 = false;
 
 // ── C5 quality gate state ────────────────────────────────────────────────
@@ -79,7 +80,14 @@ static void stage_container2(const SensorData* data)
         }
         return;
     }
-    overflowC2 = false;
+    if (overflowC2 && data->levelC2 <= (float)C2_LEVEL_RESUME) {
+        overflowC2 = false;
+    }
+    // Still draining toward resume — keep inlet closed but let normal logic run
+    // so other actuators (PUMP1 etc.) are managed correctly by the level checks below.
+    if (overflowC2) {
+        valve_close(VALVE1_PIN);
+    }
 
     // Overflow guard — C3 nearly full, stop feeding it
     if (cal_isLevelCalibrated(1) && data->levelC3 >= (float)C3_LEVEL_OVERFLOW) {
@@ -93,7 +101,9 @@ static void stage_container2(const SensorData* data)
         }
         return;
     }
-    overflowC3 = false;
+    if (overflowC3 && cal_isLevelCalibrated(1) && data->levelC3 <= (float)C3_LEVEL_RESUME) {
+        overflowC3 = false;
+    }
 
     bool levelHigh = (data->levelC2 <= (float)C2_LEVEL_HIGH_CM);
     bool levelLow  = (data->levelC2 >= (float)C2_LEVEL_LOW_CM);
@@ -245,8 +255,14 @@ static void stage_container4(const SensorData* data)
         valve_close(VALVE4_PIN);   // charcoal filter → C4
         valve_close(VALVE6_PIN);   // C5 recycle → C4
         pump_stop(PUMP4_PIN);      // C5 recycle booster
-        logEvent(LOG_WARNING, LOG_CAT_SYSTEM, F("C4 overflow protection: inflow stopped"));
+        if (!overflowC4) {
+            overflowC4 = true;
+            logEvent(LOG_WARNING, LOG_CAT_SYSTEM, F("C4 overflow protection: inflow stopped"));
+        }
         return;
+    }
+    if (overflowC4 && data->levelC4 <= (float)C4_LEVEL_RESUME) {
+        overflowC4 = false;
     }
 
     bool levelHigh = (data->levelC4 <= (float)C4_LEVEL_HIGH_CM);
@@ -300,7 +316,14 @@ static void stage_container5(const SensorData* data)
         }
         return;
     }
-    overflowC5 = false;
+    if (overflowC5 && data->levelC5 <= (float)C5_LEVEL_RESUME) {
+        overflowC5 = false;
+    }
+    // Still draining toward resume — keep RO pump off but let normal logic run
+    // so PUMP3/PUMP4/valves are managed correctly by the level checks below.
+    if (overflowC5) {
+        pump_stop(PUMP2_PIN);
+    }
 
     bool hasWater = (data->levelC5 <= (float)C5_LEVEL_HIGH_CM);
     bool levelLow = (data->levelC5 >= (float)C5_LEVEL_LOW_CM);
@@ -427,6 +450,7 @@ void pipeline_init()
     emergencyStopped   = false;
     overflowC2         = false;
     overflowC3         = false;
+    overflowC4         = false;
     overflowC5         = false;
     qualityPassCount   = 0;
     qualityFailCount   = 0;
