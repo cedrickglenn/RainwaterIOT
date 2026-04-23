@@ -4,6 +4,7 @@
 #include "actuators.h"
 #include "logger.h"
 #include "calibration.h"
+#include "first_flush.h"
 
 /*
  * ═══════════════════════════════════════════════════════════════════════════
@@ -333,6 +334,16 @@ static void stage_container5(const SensorData* data)
         pump_stop(PUMP3_PIN);
         valve_close(VALVE6_PIN);
         valve_close(VALVE7_PIN);
+        pump_stop(PUMP4_PIN);
+        return;
+    }
+
+    // Calibration mode: bypass quality gate entirely so operators can run P3/V6/V7
+    // freely while tuning sensors. Level and overflow guards above still apply.
+    if (firstFlush_isCalMode()) {
+        pump_start(PUMP3_PIN);
+        valve_open(VALVE7_PIN);
+        valve_close(VALVE6_PIN);
         pump_stop(PUMP4_PIN);
         return;
     }

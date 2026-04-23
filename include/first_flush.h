@@ -123,6 +123,12 @@ void firstFlush_reset();
 void firstFlush_setCalMode(bool enable);
 
 /**
+ * Returns true if calibration mode is currently active.
+ * Used by pipeline stages to bypass quality gates while keeping level/overflow guards.
+ */
+bool firstFlush_isCalMode();
+
+/**
  * Set the flush duration (how long consistent flow must be diverted
  * before transitioning to COLLECTING). Default: FIRST_FLUSH_DURATION_MS.
  */

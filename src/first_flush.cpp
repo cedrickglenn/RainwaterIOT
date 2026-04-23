@@ -228,6 +228,12 @@ void firstFlush_setCalMode(bool enable)
 }
 
 // ═════════════════════════════════════════════════════════════════════════
+bool firstFlush_isCalMode()
+{
+    return calModeActive;
+}
+
+// ═════════════════════════════════════════════════════════════════════════
 void firstFlush_setDuration(unsigned long ms)
 {
     ffDurationMs = ms;
