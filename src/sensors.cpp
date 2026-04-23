@@ -145,6 +145,24 @@ static float readUltrasonic(Ultrasonic& sensor, uint8_t idx)
     return b;
 }
 
+// Samples averaged per turbidity read. 8 samples × 2 ms = 16 ms per sensor,
+// 48 ms total for C2+C5+C6. Keeps worst-case ACK latency (sensors_readAll +
+// cal command read) at ~108 ms — well inside the ESP32's 200 ms drain window.
+static const uint8_t TURB_AVG_SAMPLES = 8;
+
+// Average TURB_AVG_SAMPLES ADC reads with a short inter-sample delay.
+// The delay lets the ADC input cap recharge between reads, reducing sample
+// correlation and maximising noise cancellation from the averaging.
+static float readTurbAvgVolts(uint8_t analogPin)
+{
+    uint32_t sum = 0;
+    for (uint8_t i = 0; i < TURB_AVG_SAMPLES; i++) {
+        sum += analogRead(analogPin);
+        delay(2);
+    }
+    return (sum / (float)TURB_AVG_SAMPLES) * (5.0f / 1024.0f);
+}
+
 /**
  * Read turbidity sensor and return NTU via calibration module.
  * Raw voltage is passed to cal_applyTurb() which uses the stored
@@ -155,17 +173,18 @@ static float readUltrasonic(Ultrasonic& sensor, uint8_t idx)
  */
 static float readTurbidityNTU(uint8_t analogPin, uint8_t calIdx)
 {
-    float volt = analogRead(analogPin) * (5.0f / 1024.0f);
+    float volt = readTurbAvgVolts(analogPin);
     return cal_applyTurb(calIdx, volt);
 }
 
 /**
- * Read a raw turbidity voltage — used by comms.cpp during SPAN calibration
+ * Read a raw turbidity voltage — used by comms.cpp during SPAN/ZERO calibration
  * to capture the current voltage without applying calibration.
+ * Averaged for the same stability reason as readTurbidityNTU.
  */
 float sensors_readTurbVoltage(uint8_t analogPin)
 {
-    return analogRead(analogPin) * (5.0f / 1024.0f);
+    return readTurbAvgVolts(analogPin);
 }
 
 // ═════════════════════════════════════════════════════════════════════════
