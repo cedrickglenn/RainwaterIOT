@@ -30,6 +30,16 @@ static BackwashState backwashState      = BW_IDLE;
 static uint8_t       backwashCyclesDone = 0;
 static bool          emergencyStopped   = false;
 
+// ── C5 quality gate state ────────────────────────────────────────────────
+// Require QUALITY_PASS_REQUIRED consecutive passing evaluations before
+// routing to C6.  A single noisy pH or turbidity reading cannot flip the
+// routing decision — the averaging filter reduces noise but this guard
+// protects against residual spikes and transients from pump agitation.
+static const uint8_t QUALITY_PASS_REQUIRED = 3;
+static const uint8_t QUALITY_FAIL_ALERT    = 10;  // log alert after N consecutive failures
+static uint8_t       qualityPassCount      = 0;
+static uint8_t       qualityFailCount      = 0;
+
 // ═════════════════════════════════════════════════════════════════════════
 //  STAGE: Container 2 → Charcoal Filter
 // ═════════════════════════════════════════════════════════════════════════
@@ -50,8 +60,12 @@ static void stage_container2(const SensorData* data)
     // Backwash takes exclusive control of this path
     if (backwashState != BW_IDLE) return;
 
+    // Skip entirely if C2 level sensor is not calibrated — a zero/garbage
+    // reading satisfies levelHigh (0 <= 20) and would start pumps immediately.
+    if (!cal_isLevelCalibrated(0)) return;
+
     // Overflow guard — stop all inflow if C2 is nearly full
-    if (cal_isLevelCalibrated(0) && data->levelC2 >= (float)C2_LEVEL_OVERFLOW) {
+    if (data->levelC2 >= (float)C2_LEVEL_OVERFLOW) {
         valve_close(VALVE1_PIN);
         logEvent(LOG_WARNING, LOG_CAT_SYSTEM, F("C2 overflow protection: inlet closed"));
         return;
@@ -206,8 +220,12 @@ static void stage_container4(const SensorData* data)
         return;
     }
 
+    // Skip entirely if C4 level sensor is not calibrated — same startup-glitch
+    // risk as C2: a zero reading satisfies levelHigh and starts PUMP2.
+    if (!cal_isLevelCalibrated(2)) return;
+
     // Overflow guard — C4 nearly full, stop ALL inflow paths
-    if (cal_isLevelCalibrated(2) && data->levelC4 >= (float)C4_LEVEL_OVERFLOW) {
+    if (data->levelC4 >= (float)C4_LEVEL_OVERFLOW) {
         pump_stop(PUMP1_PIN);      // C2 → charcoal filter pump (feeds V4)
         valve_close(VALVE2_PIN);   // C2 → charcoal filter inlet
         valve_close(VALVE4_PIN);   // charcoal filter → C4
@@ -254,8 +272,13 @@ static void stage_container4(const SensorData* data)
 //
 static void stage_container5(const SensorData* data)
 {
+    // Skip entirely if C5 level sensor is not calibrated — a zero reading gives
+    // hasWater=true (0 <= 25) and levelLow=false, causing PUMP3/PUMP4/VALVE6/7
+    // to activate with no actual water present.
+    if (!cal_isLevelCalibrated(3)) return;
+
     // Overflow guard — C5 nearly full, stop RO inflow
-    if (cal_isLevelCalibrated(3) && data->levelC5 >= (float)C5_LEVEL_OVERFLOW) {
+    if (data->levelC5 >= (float)C5_LEVEL_OVERFLOW) {
         pump_stop(PUMP2_PIN);   // RO filter → C5
         logEvent(LOG_WARNING, LOG_CAT_SYSTEM, F("C5 overflow protection: RO pump stopped"));
         return;
@@ -273,26 +296,53 @@ static void stage_container5(const SensorData* data)
         return;
     }
 
-    // We have enough water — evaluate quality against PNSDW 2017
+    // We have enough water — evaluate quality against PNSDW 2017.
+    // Require QUALITY_PASS_REQUIRED consecutive passes before routing to C6.
+    // This guards against residual ADC noise and pump-agitation transients
+    // that could slip through even after per-sample averaging.
     if (pipeline_isWaterPotable(data)) {
-        // ✓ PASS → route to Container 6 (final potable storage)
-        pump_start(PUMP3_PIN);
-        valve_open(VALVE7_PIN);
-        valve_close(VALVE6_PIN);
-        pump_stop(PUMP4_PIN);
+        qualityFailCount = 0;
+        if (qualityPassCount < QUALITY_PASS_REQUIRED) {
+            qualityPassCount++;
+        }
+
+        if (qualityPassCount >= QUALITY_PASS_REQUIRED) {
+            // ✓ CONFIRMED PASS → route to Container 6 (final potable storage)
+            pump_start(PUMP3_PIN);
+            valve_open(VALVE7_PIN);
+            valve_close(VALVE6_PIN);
+            pump_stop(PUMP4_PIN);
+        } else {
+            // Accumulating passes — hold in C5, keep pumps off
+            pump_stop(PUMP3_PIN);
+            valve_close(VALVE6_PIN);
+            valve_close(VALVE7_PIN);
+            pump_stop(PUMP4_PIN);
+
+            Serial.print(F("[Quality] Pending pass "));
+            Serial.print(qualityPassCount);
+            Serial.print(F("/"));
+            Serial.println(QUALITY_PASS_REQUIRED);
+        }
     } else {
-        // ✗ FAIL → recycle back to Container 4 for re-treatment
+        // ✗ FAIL → reset pass streak, recycle to Container 4 for re-treatment
+        qualityPassCount = 0;
+        qualityFailCount++;
+
         pump_start(PUMP3_PIN);
         valve_close(VALVE7_PIN);
         valve_open(VALVE6_PIN);
         pump_start(PUMP4_PIN);
 
-        Serial.println(F("[Quality] FAIL -> water recycled to Container 4"));
+        Serial.print(F("[Quality] FAIL ("));
+        Serial.print(qualityFailCount);
+        Serial.println(F(") -> water recycled to Container 4"));
 
-        // SUGGESTION: Increment a static failCount here.  If it exceeds
-        //   a threshold (e.g., 10), call pipeline_emergencyStop() and
-        //   send an alert via comms.  Infinite recycling wastes energy
-        //   and indicates a deeper problem.
+        if (qualityFailCount == QUALITY_FAIL_ALERT) {
+            logEvent(LOG_ERROR, LOG_CAT_SENSOR,
+                     F("C5 quality: 10 consecutive failures — check sensors/filter"));
+            Serial.println(F("[Quality] ALERT: 10 consecutive failures"));
+        }
     }
 }
 
@@ -357,6 +407,8 @@ void pipeline_init()
     backwashState      = BW_IDLE;
     backwashCyclesDone = 0;
     emergencyStopped   = false;
+    qualityPassCount   = 0;
+    qualityFailCount   = 0;
     // All actuators already OFF from actuators_init()
 }
 
@@ -378,6 +430,10 @@ void pipeline_update(const SensorData* data)
 void pipeline_setFilterMode(FilterMode mode)
 {
     currentFilterMode = mode;
+    // Reset quality counters — changing the filter path means the water
+    // in C5 may no longer reflect the new path's output quality.
+    qualityPassCount = 0;
+    qualityFailCount = 0;
     const __FlashStringHelper* name = (mode == FILTER_CHARCOAL_ONLY)
                                       ? F("CHARCOAL_ONLY")
                                       : F("CHARCOAL_AND_RO");
@@ -475,6 +531,8 @@ bool pipeline_isWaterPotable(const SensorData* data)
 void pipeline_emergencyStop()
 {
     emergencyStopped = true;
+    qualityPassCount = 0;
+    qualityFailCount = 0;
 
     // Cancel backwash if it's running
     if (backwashState != BW_IDLE) {

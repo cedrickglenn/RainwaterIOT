@@ -81,6 +81,12 @@ static float lastVoltageC2 = 0.0f;
 static float lastVoltageC5 = 0.0f;
 static float lastVoltageC6 = 0.0f;
 
+// Samples averaged per pH read.  10 samples × 2 ms = 20 ms per sensor,
+// 60 ms total for C2+C5+C6.  Combined with turbidity (48 ms) the worst-case
+// sensors_readAll() blocking time is ~108 ms — well within the ESP32's
+// 200 ms ACK drain window.
+static const uint8_t PH_AVG_SAMPLES = 10;
+
 // ═════════════════════════════════════════════════════════════════════════
 //  Helpers
 // ═════════════════════════════════════════════════════════════════════════
@@ -187,6 +193,31 @@ float sensors_readTurbVoltage(uint8_t analogPin)
     return readTurbAvgVolts(analogPin);
 }
 
+// Average PH_AVG_SAMPLES ADC reads and return millivolts.
+// The 2 ms inter-sample delay lets the ADC input capacitor recharge
+// between reads, reducing sample correlation and improving noise rejection.
+// Mirrors the turbidity averaging pattern — same rationale, same overhead.
+static float readPhAvgMv(uint8_t analogPin)
+{
+    uint32_t sum = 0;
+    for (uint8_t i = 0; i < PH_AVG_SAMPLES; i++) {
+        sum += analogRead(analogPin);
+        delay(2);
+    }
+    return (sum / (float)PH_AVG_SAMPLES) / 1024.0f * 5000.0f;
+}
+
+/**
+ * Read raw pH voltage (mV) without applying calibration.
+ * Used by comms.cpp during MID/LOW calibration to capture a stable voltage.
+ * Averaged identically to the normal read path so calibration captures
+ * the same signal the pipeline uses.
+ */
+float sensors_readPhVoltage(uint8_t analogPin)
+{
+    return readPhAvgMv(analogPin);
+}
+
 // ═════════════════════════════════════════════════════════════════════════
 //  Public API
 // ═════════════════════════════════════════════════════════════════════════
@@ -275,20 +306,23 @@ void sensors_readAll(SensorData* data)
     { float d = readUltrasonic(usC6, 4); data->rawDistC6 = d; data->levelC6 = cal_applyLevel(4, d); }
 
     // ── pH & turbidity — capture raw voltages, then calibrate ───────
+    // pH is averaged (10 samples × 2 ms) to match turbidity's noise rejection.
+    // Temperature from the co-located DS18B20 is passed to cal_applyPH() so
+    // the Nernst temperature correction is applied to each sensor individually.
     { float v = sensors_readTurbVoltage(TURB_C2_PIN); data->rawTurbVC2 = v; data->turbidityC2 = cal_applyTurb(0, v); }
-    lastVoltageC2  = analogRead(PH_C2_PIN) / 1024.0f * 5000.0f;
+    lastVoltageC2  = readPhAvgMv(PH_C2_PIN);
     data->rawMvC2  = lastVoltageC2;
-    data->phC2     = cal_applyPH(0, lastVoltageC2);
+    data->phC2     = cal_applyPH(0, lastVoltageC2, data->tempC2);
 
     { float v = sensors_readTurbVoltage(TURB_C5_PIN); data->rawTurbVC5 = v; data->turbidityC5 = cal_applyTurb(1, v); }
-    lastVoltageC5  = analogRead(PH_C5_PIN) / 1024.0f * 5000.0f;
+    lastVoltageC5  = readPhAvgMv(PH_C5_PIN);
     data->rawMvC5  = lastVoltageC5;
-    data->phC5     = cal_applyPH(1, lastVoltageC5);
+    data->phC5     = cal_applyPH(1, lastVoltageC5, data->tempC5);
 
     { float v = sensors_readTurbVoltage(TURB_C6_PIN); data->rawTurbVC6 = v; data->turbidityC6 = cal_applyTurb(2, v); }
-    lastVoltageC6  = analogRead(PH_C6_PIN) / 1024.0f * 5000.0f;
+    lastVoltageC6  = readPhAvgMv(PH_C6_PIN);
     data->rawMvC6  = lastVoltageC6;
-    data->phC6     = cal_applyPH(2, lastVoltageC6);
+    data->phC6     = cal_applyPH(2, lastVoltageC6, data->tempC6);
 
     // ── Fire next temperature conversion (non-blocking, ~1ms) ───────
     // Results will be ready in 750ms — well before the next call at

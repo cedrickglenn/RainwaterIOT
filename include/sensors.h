@@ -128,6 +128,15 @@ void sensors_flowISR();
 float sensors_readTurbVoltage(uint8_t analogPin);
 
 /**
+ * Read raw pH voltage (mV) without applying calibration.
+ * 10-sample average — identical signal to the normal pipeline read so that
+ * MID/LOW calibration captures exactly what the routing logic will see.
+ *
+ * @param analogPin  The analog pin to read (PH_C2_PIN, etc.)
+ */
+float sensors_readPhVoltage(uint8_t analogPin);
+
+/**
  * Set the minimum flow rate (L/min) considered "active flow".
  * Values below this threshold are treated as zero (noise floor).
  * Default: FLOW_MIN_THRESHOLD from config.h.

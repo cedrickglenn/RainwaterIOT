@@ -100,7 +100,7 @@ void cal_init()
 //  Apply functions
 // ═════════════════════════════════════════════════════════════════════════
 
-float cal_applyPH(uint8_t idx, float mV)
+float cal_applyPH(uint8_t idx, float mV, float tempC)
 {
     if (idx >= CAL_QTY_SENSORS) return 7.0f;
 
@@ -113,7 +113,18 @@ float cal_applyPH(uint8_t idx, float mV)
     float dV = p.neutralV - p.acidV;
     if (fabsf(dV) < 1.0f) return 7.0f;   // guard against uncalibrated / zero slope
 
-    float slope = 2.99f / dV;
+    // Nernst temperature correction: the electrode's mV/pH slope is proportional
+    // to absolute temperature.  Calibration buffers are captured at ambient temp
+    // but the formula below scales the slope continuously with the live reading.
+    //   tempFactor = (273.15 + T) / 298.15   (298.15 K = 25 °C reference)
+    // Clamp input to a plausible range (0–60 °C) to guard against disconnected
+    // DS18B20 returning DEVICE_DISCONNECTED (-127 °C) or other fault values.
+    float tC = tempC;
+    if (tC < 0.0f)  tC = 25.0f;
+    if (tC > 60.0f) tC = 25.0f;
+    float tempFactor = (273.15f + tC) / 298.15f;
+
+    float slope = (2.99f / dV) * tempFactor;
     float ph    = 7.0f + (p.neutralV - mV) * slope;
 
     // Clamp to physically meaningful range

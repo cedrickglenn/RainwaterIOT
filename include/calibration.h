@@ -104,13 +104,17 @@ void cal_save();
 void cal_reset();
 
 /**
- * Apply pH calibration to a raw ADC voltage (mV).
- * Uses two-point linear interpolation between acid and neutral points.
+ * Apply pH calibration to a raw ADC voltage (mV) with Nernst temperature
+ * compensation.  The calibration buffers are assumed to have been captured
+ * at 25 °C; the slope is scaled by (273.15 + tempC) / 298.15 for other
+ * temperatures.  At 30 °C this is a ~1.7% correction (~0.1–0.2 pH units).
  *
- * @param idx  Sensor index: 0=C2, 1=C5, 2=C6
- * @param mV   Raw voltage in millivolts (analogRead / 1024.0 * 5000.0)
+ * @param idx    Sensor index: 0=C2, 1=C5, 2=C6
+ * @param mV     Raw voltage in millivolts (analogRead / 1024.0 * 5000.0)
+ * @param tempC  Water temperature in °C from the co-located DS18B20.
+ *               Pass 25.0 if the temperature reading is unavailable.
  */
-float cal_applyPH(uint8_t idx, float mV);
+float cal_applyPH(uint8_t idx, float mV, float tempC = 25.0f);
 
 /**
  * Apply turbidity calibration to a raw ADC voltage (V).

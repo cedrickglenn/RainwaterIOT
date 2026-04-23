@@ -455,7 +455,10 @@ static void processCommand(const char* cmd)
         int8_t idx = containerToQualIdx(container);
         if (idx < 0) { sendAck("CAL_ERROR,PH,BAD_CONTAINER"); return; }
 
-        float mV = analogRead(phPins[idx]) / 1024.0f * 5000.0f;
+        // Use the averaged read — same signal the pipeline sees — so the stored
+        // neutralV/acidV match the live mV values that cal_applyPH() receives.
+        // 10 samples × 2 ms = 20 ms: well within the 200 ms ACK drain window.
+        float mV = sensors_readPhVoltage(phPins[idx]);
 
         if (strncmp(point, "MID", 3) == 0) {
             calData.ph[idx].neutralV = mV;
