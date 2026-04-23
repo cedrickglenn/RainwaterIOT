@@ -109,8 +109,20 @@ float cal_applyPH(uint8_t idx, float mV, float tempC)
     // Two-point linear calibration:
     //   At neutralV → pH 7.00
     //   At acidV    → pH 4.01
-    //   slope = (7.00 - 4.01) / (neutralV - acidV) = 2.99 / (neutralV - acidV)
-    float dV = p.neutralV - p.acidV;
+    //
+    // The general two-point linear formula is:
+    //   pH = 7.00 + (mV - neutralV) × (4.01 - 7.00) / (acidV - neutralV)
+    //      = 7.00 + (mV - neutralV) × (-2.99) / (acidV - neutralV)
+    //      = 7.00 - (mV - neutralV) × 2.99   / (acidV - neutralV)
+    //
+    // This is polarity-agnostic: it works whether neutralV > acidV (standard)
+    // or neutralV < acidV (inverted probe / reversed BNC).
+    //
+    //   Standard (neutralV=2530, acidV=2030): acidV-neutralV = -500 (negative)
+    //     → slope = -2.99/-500 = +0.00598 pH/mV → as mV rises above neutral, pH rises ✓
+    //   Inverted (neutralV=1700, acidV=2400): acidV-neutralV = +700 (positive)
+    //     → slope = -2.99/+700 = -0.00427 pH/mV → as mV rises above neutral, pH falls ✓
+    float dV = p.acidV - p.neutralV;
     if (fabsf(dV) < 1.0f) return 7.0f;   // guard against uncalibrated / zero slope
 
     // Nernst temperature correction: the electrode's mV/pH slope is proportional
@@ -124,8 +136,8 @@ float cal_applyPH(uint8_t idx, float mV, float tempC)
     if (tC > 60.0f) tC = 25.0f;
     float tempFactor = (273.15f + tC) / 298.15f;
 
-    float slope = (2.99f / dV) * tempFactor;
-    float ph    = 7.0f + (p.neutralV - mV) * slope;
+    float slope = (-2.99f / dV) * tempFactor;
+    float ph    = 7.0f + (mV - p.neutralV) * slope;
 
     // Clamp to physically meaningful range
     if (ph < 0.0f)  ph = 0.0f;
