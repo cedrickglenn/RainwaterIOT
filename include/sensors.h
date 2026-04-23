@@ -143,4 +143,11 @@ float sensors_readPhVoltage(uint8_t analogPin);
  */
 void sensors_setFlowThreshold(float lpm);
 
+/**
+ * Reset the pH EMA accumulators so the next sensors_readAll() re-seeds
+ * them from a fresh live reading.  Call when entering calibration mode
+ * (CAL_MODE,ON) so the MID/LOW voltage capture is not EMA-lagged.
+ */
+void sensors_resetPhEma();
+
 #endif // SENSORS_H

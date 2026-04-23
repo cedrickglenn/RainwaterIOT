@@ -73,7 +73,7 @@ static DallasTemperature  tempC2(&owC2);
 static DallasTemperature  tempC5(&owC5);
 static DallasTemperature  tempC6(&owC6);
 
-// ── pH — raw voltage accumulators ───────────────────────────────────────
+// ── pH — raw voltage accumulators and EMA state ─────────────────────────
 //    We read raw ADC voltage and pass it to cal_applyPH().
 //    No DFRobot_PH library needed — our calibration module handles
 //    the two-point linear formula with per-sensor EEPROM storage.
@@ -83,9 +83,32 @@ static float lastVoltageC6 = 0.0f;
 
 // Samples averaged per pH read.  10 samples × 2 ms = 20 ms per sensor,
 // 60 ms total for C2+C5+C6.  Combined with turbidity (48 ms) the worst-case
-// sensors_readAll() blocking time is ~108 ms — well within the ESP32's
-// 200 ms ACK drain window.
+// sensors_readAll() blocking time is ~113 ms — well within the ESP32's
+// 200 ms ACK drain window.  The EMA below adds < 1 µs (pure arithmetic,
+// no delay(), no Serial) and has zero effect on ACK timing.
 static const uint8_t PH_AVG_SAMPLES = 10;
+
+// Exponential moving average (EMA) for pH millivolt readings.
+//
+// The 10-sample window averaging (above) cancels high-frequency ADC noise
+// within a single read.  The EMA smooths the slower op-amp output wander
+// (~0.5–2 Hz) that persists across successive 1-second read cycles.
+//
+// alpha = 0.2  →  time constant ≈ 5 read cycles = 5 s at 1-second interval.
+// This is long enough to suppress the LM358 drift, short enough that a real
+// pH change (e.g. water quality failure) is reflected within ~15 s.
+//
+// rawMvCx  is sent as RAW_MV telemetry (unfiltered, for diagnostic purposes).
+// emaMvCx  is what cal_applyPH() receives — the value that drives pipeline logic.
+//
+// emaInitDone: false until the first valid read seeds each accumulator.
+// Seeding from the first reading rather than 0.0 prevents a ~2530 mV step
+// transient on boot that would take ~25 s to drain out.
+static const float PH_EMA_ALPHA  = 0.2f;
+static float       emaMvC2       = 0.0f;
+static float       emaMvC5       = 0.0f;
+static float       emaMvC6       = 0.0f;
+static bool        emaInitDone   = false;
 
 // ═════════════════════════════════════════════════════════════════════════
 //  Helpers
@@ -306,23 +329,32 @@ void sensors_readAll(SensorData* data)
     { float d = readUltrasonic(usC6, 4); data->rawDistC6 = d; data->levelC6 = cal_applyLevel(4, d); }
 
     // ── pH & turbidity — capture raw voltages, then calibrate ───────
-    // pH is averaged (10 samples × 2 ms) to match turbidity's noise rejection.
-    // Temperature from the co-located DS18B20 is passed to cal_applyPH() so
-    // the Nernst temperature correction is applied to each sensor individually.
+    // Each pH read: 10-sample average (20 ms, pure blocking in readPhAvgMv).
+    // EMA then filters across successive 1-second cycles (zero blocking time).
+    // rawMvCx = the averaged-but-pre-EMA value, sent as RAW_MV telemetry.
+    // emaMvCx = the EMA-smoothed value passed to cal_applyPH() and the pipeline.
     { float v = sensors_readTurbVoltage(TURB_C2_PIN); data->rawTurbVC2 = v; data->turbidityC2 = cal_applyTurb(0, v); }
-    lastVoltageC2  = readPhAvgMv(PH_C2_PIN);
-    data->rawMvC2  = lastVoltageC2;
-    data->phC2     = cal_applyPH(0, lastVoltageC2, data->tempC2);
+    lastVoltageC2 = readPhAvgMv(PH_C2_PIN);
+    if (!emaInitDone) emaMvC2 = lastVoltageC2;
+    emaMvC2 = PH_EMA_ALPHA * lastVoltageC2 + (1.0f - PH_EMA_ALPHA) * emaMvC2;
+    data->rawMvC2 = lastVoltageC2;
+    data->phC2    = cal_applyPH(0, emaMvC2, data->tempC2);
 
     { float v = sensors_readTurbVoltage(TURB_C5_PIN); data->rawTurbVC5 = v; data->turbidityC5 = cal_applyTurb(1, v); }
-    lastVoltageC5  = readPhAvgMv(PH_C5_PIN);
-    data->rawMvC5  = lastVoltageC5;
-    data->phC5     = cal_applyPH(1, lastVoltageC5, data->tempC5);
+    lastVoltageC5 = readPhAvgMv(PH_C5_PIN);
+    if (!emaInitDone) emaMvC5 = lastVoltageC5;
+    emaMvC5 = PH_EMA_ALPHA * lastVoltageC5 + (1.0f - PH_EMA_ALPHA) * emaMvC5;
+    data->rawMvC5 = lastVoltageC5;
+    data->phC5    = cal_applyPH(1, emaMvC5, data->tempC5);
 
     { float v = sensors_readTurbVoltage(TURB_C6_PIN); data->rawTurbVC6 = v; data->turbidityC6 = cal_applyTurb(2, v); }
-    lastVoltageC6  = readPhAvgMv(PH_C6_PIN);
-    data->rawMvC6  = lastVoltageC6;
-    data->phC6     = cal_applyPH(2, lastVoltageC6, data->tempC6);
+    lastVoltageC6 = readPhAvgMv(PH_C6_PIN);
+    if (!emaInitDone) emaMvC6 = lastVoltageC6;
+    emaMvC6 = PH_EMA_ALPHA * lastVoltageC6 + (1.0f - PH_EMA_ALPHA) * emaMvC6;
+    data->rawMvC6 = lastVoltageC6;
+    data->phC6    = cal_applyPH(2, emaMvC6, data->tempC6);
+
+    emaInitDone = true;
 
     // ── Fire next temperature conversion (non-blocking, ~1ms) ───────
     // Results will be ready in 750ms — well before the next call at
@@ -349,4 +381,15 @@ void sensors_setFlowThreshold(float lpm)
     Serial.print(F("[Sensors] Flow threshold set to "));
     Serial.print(lpm, 2);
     Serial.println(F(" L/min"));
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+void sensors_resetPhEma()
+{
+    // Forces the next sensors_readAll() to re-seed all three EMA accumulators
+    // from the live reading rather than blending from the current (stale) value.
+    // Call this when CAL_MODE,ON is issued so the calibration voltage capture
+    // reflects the actual probe output, not a history-weighted average.
+    emaInitDone = false;
+    Serial.println(F("[Sensors] pH EMA reset"));
 }

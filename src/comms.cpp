@@ -629,6 +629,9 @@ static void processCommand(const char* cmd)
             firstFlush_setCalMode(true);
             valve_close(VALVE1_PIN);
             valve_close(VALVE8_PIN);
+            // Reset pH EMA so the upcoming MID/LOW capture reads live probe
+            // voltage rather than a history-weighted average from normal operation.
+            sensors_resetPhEma();
             sendAck("CAL_MODE,ON,OK");
             logEvent(LOG_INFO, LOG_CAT_CALIBRATION, F("Calibration mode ON — FF suspended"));
         } else if (strncmp(modeStr, "OFF", 3) == 0) {
