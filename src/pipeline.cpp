@@ -30,6 +30,12 @@ static BackwashState backwashState      = BW_IDLE;
 static uint8_t       backwashCyclesDone = 0;
 static bool          emergencyStopped   = false;
 
+// Overflow latches — log the warning once per overflow event, not every tick.
+// Cleared when the level drops back below the overflow threshold.
+static bool overflowC2 = false;
+static bool overflowC3 = false;
+static bool overflowC5 = false;
+
 // ── C5 quality gate state ────────────────────────────────────────────────
 // Require QUALITY_PASS_REQUIRED consecutive passing evaluations before
 // routing to C6.  A single noisy pH or turbidity reading cannot flip the
@@ -67,9 +73,13 @@ static void stage_container2(const SensorData* data)
     // Overflow guard — stop all inflow if C2 is nearly full
     if (data->levelC2 >= (float)C2_LEVEL_OVERFLOW) {
         valve_close(VALVE1_PIN);
-        logEvent(LOG_WARNING, LOG_CAT_SYSTEM, F("C2 overflow protection: inlet closed"));
+        if (!overflowC2) {
+            overflowC2 = true;
+            logEvent(LOG_WARNING, LOG_CAT_SYSTEM, F("C2 overflow protection: inlet closed"));
+        }
         return;
     }
+    overflowC2 = false;
 
     // Overflow guard — C3 nearly full, stop feeding it
     if (cal_isLevelCalibrated(1) && data->levelC3 >= (float)C3_LEVEL_OVERFLOW) {
@@ -77,9 +87,13 @@ static void stage_container2(const SensorData* data)
         valve_close(VALVE2_PIN);
         valve_close(VALVE3_PIN);
         valve_close(VALVE4_PIN);
-        logEvent(LOG_WARNING, LOG_CAT_SYSTEM, F("C3 overflow protection: feed stopped"));
+        if (!overflowC3) {
+            overflowC3 = true;
+            logEvent(LOG_WARNING, LOG_CAT_SYSTEM, F("C3 overflow protection: feed stopped"));
+        }
         return;
     }
+    overflowC3 = false;
 
     bool levelHigh = (data->levelC2 <= (float)C2_LEVEL_HIGH_CM);
     bool levelLow  = (data->levelC2 >= (float)C2_LEVEL_LOW_CM);
@@ -280,9 +294,13 @@ static void stage_container5(const SensorData* data)
     // Overflow guard — C5 nearly full, stop RO inflow
     if (data->levelC5 >= (float)C5_LEVEL_OVERFLOW) {
         pump_stop(PUMP2_PIN);   // RO filter → C5
-        logEvent(LOG_WARNING, LOG_CAT_SYSTEM, F("C5 overflow protection: RO pump stopped"));
+        if (!overflowC5) {
+            overflowC5 = true;
+            logEvent(LOG_WARNING, LOG_CAT_SYSTEM, F("C5 overflow protection: RO pump stopped"));
+        }
         return;
     }
+    overflowC5 = false;
 
     bool hasWater = (data->levelC5 <= (float)C5_LEVEL_HIGH_CM);
     bool levelLow = (data->levelC5 >= (float)C5_LEVEL_LOW_CM);
@@ -407,6 +425,9 @@ void pipeline_init()
     backwashState      = BW_IDLE;
     backwashCyclesDone = 0;
     emergencyStopped   = false;
+    overflowC2         = false;
+    overflowC3         = false;
+    overflowC5         = false;
     qualityPassCount   = 0;
     qualityFailCount   = 0;
     // All actuators already OFF from actuators_init()
