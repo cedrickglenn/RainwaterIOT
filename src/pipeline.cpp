@@ -45,9 +45,24 @@ static bool overflowC5 = false;
 // routing decision — the averaging filter reduces noise but this guard
 // protects against residual spikes and transients from pump agitation.
 static const uint8_t QUALITY_PASS_REQUIRED = 3;
+static const uint8_t QUALITY_FAIL_REQUIRED = 3;   // consecutive fails before recycling to C4
 static const uint8_t QUALITY_FAIL_ALERT    = 10;  // log alert after N consecutive failures
 static uint8_t       qualityPassCount      = 0;
 static uint8_t       qualityFailCount      = 0;
+
+// Tracks the last routing decision applied to P3/P4/V6/V7 in stage_container5().
+// -1 = not yet set, 0 = stopped (low level), 1 = calibration pass-through,
+//  2 = accumulating passes (holding), 3 = quality PASS routed to C6,
+//  4 = quality FAIL recycled to C4.
+// Actuator writes are skipped when the decision is the same as last time,
+// preventing relay chatter at 1 Hz from unconditional digitalWrite calls.
+static int8_t lastC5Routing = -1;
+
+// True while C5 has insufficient water.  Flips to false the first tick C5
+// has enough water to begin quality evaluation.  Sensor out-of-range warnings
+// are logged exactly once on that transition (once per fill cycle) so that
+// recycled water being re-evaluated does not re-fire the same warning.
+static bool c5WasEmpty = true;
 
 // ═════════════════════════════════════════════════════════════════════════
 //  STAGE: Container 2 → Charcoal Filter
@@ -337,20 +352,45 @@ static void stage_container5(const SensorData* data)
 
     if (!hasWater || levelLow) {
         // Not enough water to test or pump — shut everything off
-        pump_stop(PUMP3_PIN);
-        valve_close(VALVE6_PIN);
-        valve_close(VALVE7_PIN);
-        pump_stop(PUMP4_PIN);
+        if (lastC5Routing != 0) {
+            lastC5Routing = 0;
+            c5WasEmpty = true;
+            pump_stop(PUMP3_PIN);
+            valve_close(VALVE6_PIN);
+            valve_close(VALVE7_PIN);
+            pump_stop(PUMP4_PIN);
+        }
         return;
+    }
+
+    // C5 just received a new fill — log quality snapshot once so operators
+    // can see the incoming water state without spamming on every eval tick.
+    if (c5WasEmpty && !firstFlush_isCalMode()) {
+        c5WasEmpty = false;
+        bool phOK   = (data->phC5 >= WQ_PH_MIN) && (data->phC5 <= WQ_PH_MAX);
+        bool turbOK = (data->turbidityC5 <= WQ_TURBIDITY_MAX_NTU);
+        if (!phOK) {
+            logEvent(LOG_WARNING, LOG_CAT_SENSOR,
+                     String("pH out of range on C5 fill: ") + String(data->phC5, 2));
+        }
+        if (!turbOK) {
+            logEvent(LOG_WARNING, LOG_CAT_SENSOR,
+                     String("Turbidity out of range on C5 fill: ") + String(data->turbidityC5, 1));
+        }
+    } else {
+        c5WasEmpty = false;
     }
 
     // Calibration mode: bypass quality gate entirely so operators can run P3/V6/V7
     // freely while tuning sensors. Level and overflow guards above still apply.
     if (firstFlush_isCalMode()) {
-        pump_start(PUMP3_PIN);
-        valve_open(VALVE7_PIN);
-        valve_close(VALVE6_PIN);
-        pump_stop(PUMP4_PIN);
+        if (lastC5Routing != 1) {
+            lastC5Routing = 1;
+            pump_start(PUMP3_PIN);
+            valve_open(VALVE7_PIN);
+            valve_close(VALVE6_PIN);
+            pump_stop(PUMP4_PIN);
+        }
         return;
     }
 
@@ -366,35 +406,60 @@ static void stage_container5(const SensorData* data)
 
         if (qualityPassCount >= QUALITY_PASS_REQUIRED) {
             // ✓ CONFIRMED PASS → route to Container 6 (final potable storage)
-            pump_start(PUMP3_PIN);
-            valve_open(VALVE7_PIN);
-            valve_close(VALVE6_PIN);
-            pump_stop(PUMP4_PIN);
+            if (lastC5Routing != 3) {
+                lastC5Routing = 3;
+                pump_start(PUMP3_PIN);
+                valve_open(VALVE7_PIN);
+                valve_close(VALVE6_PIN);
+                pump_stop(PUMP4_PIN);
+            }
         } else {
             // Accumulating passes — hold in C5, keep pumps off
-            pump_stop(PUMP3_PIN);
-            valve_close(VALVE6_PIN);
-            valve_close(VALVE7_PIN);
-            pump_stop(PUMP4_PIN);
-
+            if (lastC5Routing != 2) {
+                lastC5Routing = 2;
+                pump_stop(PUMP3_PIN);
+                valve_close(VALVE6_PIN);
+                valve_close(VALVE7_PIN);
+                pump_stop(PUMP4_PIN);
+            }
             Serial.print(F("[Quality] Pending pass "));
             Serial.print(qualityPassCount);
             Serial.print(F("/"));
             Serial.println(QUALITY_PASS_REQUIRED);
         }
     } else {
-        // ✗ FAIL → reset pass streak, recycle to Container 4 for re-treatment
+        // ✗ FAIL — reset pass streak, accumulate fail count
         qualityPassCount = 0;
-        qualityFailCount++;
+        if (qualityFailCount < QUALITY_FAIL_REQUIRED) {
+            qualityFailCount++;
+        }
 
-        pump_start(PUMP3_PIN);
-        valve_close(VALVE7_PIN);
-        valve_open(VALVE6_PIN);
-        pump_start(PUMP4_PIN);
-
-        Serial.print(F("[Quality] FAIL ("));
-        Serial.print(qualityFailCount);
-        Serial.println(F(") -> water recycled to Container 4"));
+        if (qualityFailCount >= QUALITY_FAIL_REQUIRED) {
+            // CONFIRMED FAIL → recycle to Container 4 for re-treatment
+            if (lastC5Routing != 4) {
+                lastC5Routing = 4;
+                pump_start(PUMP3_PIN);
+                valve_close(VALVE7_PIN);
+                valve_open(VALVE6_PIN);
+                pump_start(PUMP4_PIN);
+            }
+            Serial.print(F("[Quality] FAIL ("));
+            Serial.print(qualityFailCount);
+            Serial.println(F(") -> water recycled to Container 4"));
+        } else {
+            // Accumulating fails — hold in C5, keep pumps off
+            if (lastC5Routing != 2) {
+                lastC5Routing = 2;
+                pump_stop(PUMP3_PIN);
+                valve_close(VALVE6_PIN);
+                valve_close(VALVE7_PIN);
+                pump_stop(PUMP4_PIN);
+            }
+            Serial.print(F("[Quality] Pending fail "));
+            Serial.print(qualityFailCount);
+            Serial.print(F("/"));
+            Serial.println(QUALITY_FAIL_REQUIRED);
+        }
 
         if (qualityFailCount == QUALITY_FAIL_ALERT) {
             logEvent(LOG_ERROR, LOG_CAT_SENSOR,
@@ -680,19 +745,6 @@ bool pipeline_isWaterPotable(const SensorData* data)
     bool phOK   = (data->phC5 >= WQ_PH_MIN) && (data->phC5 <= WQ_PH_MAX);
     bool turbOK = (data->turbidityC5 <= WQ_TURBIDITY_MAX_NTU);
     bool tempOK = (data->tempC5 >= WQ_TEMP_MIN_C) && (data->tempC5 <= WQ_TEMP_MAX_C);
-
-    // Sensor quality WARNs are suppressed during calibration mode — probes are
-    // out of the water (in buffer solutions) so out-of-range readings are expected.
-    if (!firstFlush_isCalMode()) {
-        if (!phOK) {
-            logEvent(LOG_WARNING, LOG_CAT_SENSOR,
-                     String("pH out of range: ") + String(data->phC5, 2));
-        }
-        if (!turbOK) {
-            logEvent(LOG_WARNING, LOG_CAT_SENSOR,
-                     String("Turbidity out of range: ") + String(data->turbidityC5, 1));
-        }
-    }
 
     // Uncomment during development to see every quality evaluation:
     // Serial.print(F("[Quality] pH="));    Serial.print(data->phC5, 2);
