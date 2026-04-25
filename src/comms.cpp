@@ -151,6 +151,28 @@ static void sendCalData()
 }
 
 // ═════════════════════════════════════════════════════════════════════════
+void comms_sendActuatorStatus()
+{
+    // Build "S,ACTUATORS,V1:0,V2:0,...,P4:0" in one buffer so the trailing
+    // \n is never separated from the payload by a serial buffer flush.
+    // "S,ACTUATORS" + 12×",Vn:0" = ~71 chars → fits comfortably in 80 bytes.
+    char actBuf[80];
+    uint8_t pos = 0;
+    pos += snprintf(actBuf + pos, sizeof(actBuf) - pos, "S,ACTUATORS");
+    for (uint8_t i = 0; i < VALVE_COUNT; i++) {
+        pos += snprintf(actBuf + pos, sizeof(actBuf) - pos, ",%s:%c",
+                        VALVE_MAP[i].label,
+                        actuator_isOn(VALVE_MAP[i].pin) ? '1' : '0');
+    }
+    for (uint8_t i = 0; i < PUMP_COUNT; i++) {
+        pos += snprintf(actBuf + pos, sizeof(actBuf) - pos, ",%s:%c",
+                        PUMP_MAP[i].label,
+                        actuator_isOn(PUMP_MAP[i].pin) ? '1' : '0');
+    }
+    Serial1.println(actBuf);
+}
+
+// ═════════════════════════════════════════════════════════════════════════
 void comms_sendData(const SensorData* data,
                     FirstFlushState   ffState,
                     FilterMode        filterMode,
@@ -213,30 +235,7 @@ void comms_sendData(const SensorData* data,
     Serial1.println(firstFlush_isCalMode() ? 1 : 0);
 
     // ── Live actuator states — one compact line per telemetry frame ────
-    // Format: S,ACTUATORS,V1:0,V2:1,...,P1:0,...
-    // Sent inside comms_sendData() so it never competes with a command's
-    // ACK drain window on the ESP32 side (which only opens after a C,*
-    // command is sent, not during periodic telemetry).
-    // The bridge uses this to update actuator_states with confirmed:true,
-    // reflecting reality even when the Mega acts autonomously (overflow
-    // protection, dry-run guard, etc.).
-    // Build the entire ACTUATORS line in one buffer and send with a single
-    // println() so the \n is never separated from the payload by a buffer flush.
-    // "S,ACTUATORS,V1:0,V2:0,...,P4:0" = ~44 chars — fits easily in 64 bytes.
-    char actBuf[80];   // 11 ("S,ACTUATORS") + 12×5 (",V1:0") = 71 chars + \0
-    uint8_t pos = 0;
-    pos += snprintf(actBuf + pos, sizeof(actBuf) - pos, "S,ACTUATORS");
-    for (uint8_t i = 0; i < VALVE_COUNT; i++) {
-        pos += snprintf(actBuf + pos, sizeof(actBuf) - pos, ",%s:%c",
-                        VALVE_MAP[i].label,
-                        actuator_isOn(VALVE_MAP[i].pin) ? '1' : '0');
-    }
-    for (uint8_t i = 0; i < PUMP_COUNT; i++) {
-        pos += snprintf(actBuf + pos, sizeof(actBuf) - pos, ",%s:%c",
-                        PUMP_MAP[i].label,
-                        actuator_isOn(PUMP_MAP[i].pin) ? '1' : '0');
-    }
-    Serial1.println(actBuf);
+    comms_sendActuatorStatus();
 
     // ── Current calibration state from EEPROM ────────────────────────
     sendCalData();

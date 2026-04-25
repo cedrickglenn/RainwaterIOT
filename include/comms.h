@@ -97,4 +97,12 @@ void comms_sendData(const SensorData* data,
  */
 bool comms_receiveCommands();
 
+/**
+ * Immediately push the current actuator states to the ESP32.
+ * Call after any automated actuator change (overflow, dry-run, emergency)
+ * so the dashboard reflects the real state without waiting for the next
+ * scheduled telemetry frame.
+ */
+void comms_sendActuatorStatus();
+
 #endif // COMMS_H
