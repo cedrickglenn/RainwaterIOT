@@ -536,26 +536,32 @@ static void processCommand(const char* cmd)
         strncpy(buf, payload + 8, sizeof(buf) - 1);
         char* container = strtok(buf, ",");
         char* point     = strtok(nullptr, ",");
+        char* valStr    = strtok(nullptr, ",");  // optional: dashboard-sent inline cm value
         if (!container || !point) return;
 
         int8_t idx = containerToLevelIdx(container);
         if (idx < 0) { sendAck("CAL_ERROR,LVL,BAD_CONTAINER"); return; }
 
-        // Read the appropriate ultrasonic sensor for this container.
-        // We re-read directly here rather than using the last cached value
-        // so the calibration captures the current actual distance.
-        const uint8_t trigPins[5] = { US_C2_TRIG, US_C3_TRIG, US_C4_TRIG, US_C5_TRIG, US_C6_TRIG };
-        const uint8_t echoPins[5] = { US_C2_ECHO, US_C3_ECHO, US_C4_ECHO, US_C5_ECHO, US_C6_ECHO };
-
-        // Simple single-shot read (not median) for calibration capture.
-        // Timeout: 25 000 µs ≈ 4.3 m max range — ensures the call returns
-        // well within the ESP32's 200 ms ACK drain window.  Without a timeout
-        // pulseIn() blocks up to 1 s, causing the ESP32 to log a false
-        // "no ACK (200ms timeout)" warning even though the Mega did respond.
-        digitalWrite(trigPins[idx], LOW);  delayMicroseconds(2);
-        digitalWrite(trigPins[idx], HIGH); delayMicroseconds(10);
-        digitalWrite(trigPins[idx], LOW);
-        float distCm = pulseIn(echoPins[idx], HIGH, 25000UL) / 58.0f;
+        // If the dashboard sent the currently-displayed raw distance, use it directly.
+        // This eliminates lag between "value user saw on screen" and "value Mega captures"
+        // due to MQTT → ESP32 → serial travel time.
+        // Fall back to a fresh pulseIn() read only when no inline value is provided
+        // (backward-compatible with older dashboard versions or manual MQTT commands).
+        float distCm;
+        if (valStr && valStr[0] != '\0') {
+            distCm = atof(valStr);
+        } else {
+            // Fresh single-shot read (not median) for calibration capture.
+            // Timeout: 25 000 µs ≈ 4.3 m max range — ensures the call returns
+            // well within the ESP32's 200 ms ACK drain window.
+            const uint8_t trigPins[5] = { US_C2_TRIG, US_C3_TRIG, US_C4_TRIG, US_C5_TRIG, US_C6_TRIG };
+            const uint8_t echoPins[5] = { US_C2_ECHO, US_C3_ECHO, US_C4_ECHO, US_C5_ECHO, US_C6_ECHO };
+            digitalWrite(trigPins[idx], LOW);  delayMicroseconds(2);
+            digitalWrite(trigPins[idx], HIGH); delayMicroseconds(10);
+            digitalWrite(trigPins[idx], LOW);
+            distCm = pulseIn(echoPins[idx], HIGH, 25000UL) / 58.0f;
+        }
+        if (distCm <= 0.0f || distCm > 500.0f) { sendAck("CAL_ERROR,LVL,BAD_VALUE"); return; }
 
         if (strncmp(point, "EMPTY", 5) == 0) {
             calData.level[idx].emptyCm = distCm;
@@ -613,10 +619,62 @@ static void processCommand(const char* cmd)
         logEvent(LOG_INFO, LOG_CAT_CALIBRATION, F("CAL_FLOW,PPL accepted"));
         logEvent(LOG_INFO, LOG_CAT_CALIBRATION, F("Flow saved to EEPROM"));
     }
-    else if (strncmp(payload, "CAL_RESET,ALL", 13) == 0)
+    else if (strncmp(payload, "CAL_RESET,", 10) == 0)
     {
-        cal_reset();
-        sendAck("CAL_RESET,OK");
+        char buf[32];
+        strncpy(buf, payload + 10, sizeof(buf) - 1);
+        buf[sizeof(buf) - 1] = '\0';
+        char* sensor    = strtok(buf, ",");    // ALL / LVL / PH / TURB / TEMP / FLOW
+        char* container = strtok(nullptr, ","); // C2–C6, ALL, or null (for FLOW/ALL)
+
+        if (!sensor) { sendAck("CAL_ERROR,RESET,BAD_FORMAT"); return; }
+
+        if (strncmp(sensor, "ALL", 3) == 0) {
+            cal_reset();
+            sendAck("CAL_RESET,OK");  // keep existing ACK format
+            return;
+        }
+        if (strncmp(sensor, "FLOW", 4) == 0) {
+            cal_resetFlow();
+            sendAck("CAL_RESET,FLOW,OK");
+            return;
+        }
+
+        if (!container) { sendAck("CAL_ERROR,RESET,NO_CONTAINER"); return; }
+        bool resetAll = (strncmp(container, "ALL", 3) == 0);
+        char ack[48];
+
+        if (strncmp(sensor, "LVL", 3) == 0) {
+            uint8_t idx = resetAll ? 255 : (uint8_t)containerToLevelIdx(container);
+            if (!resetAll && idx == 255) { sendAck("CAL_ERROR,RESET,BAD_CONTAINER"); return; }
+            cal_resetLevel(idx);
+            snprintf(ack, sizeof(ack), "CAL_RESET,LVL,%s,OK", container);
+            sendAck(ack);
+        }
+        else if (strncmp(sensor, "PH", 2) == 0) {
+            uint8_t idx = resetAll ? 255 : (uint8_t)containerToQualIdx(container);
+            if (!resetAll && idx == 255) { sendAck("CAL_ERROR,RESET,BAD_CONTAINER"); return; }
+            cal_resetPH(idx);
+            snprintf(ack, sizeof(ack), "CAL_RESET,PH,%s,OK", container);
+            sendAck(ack);
+        }
+        else if (strncmp(sensor, "TURB", 4) == 0) {
+            uint8_t idx = resetAll ? 255 : (uint8_t)containerToQualIdx(container);
+            if (!resetAll && idx == 255) { sendAck("CAL_ERROR,RESET,BAD_CONTAINER"); return; }
+            cal_resetTurb(idx);
+            snprintf(ack, sizeof(ack), "CAL_RESET,TURB,%s,OK", container);
+            sendAck(ack);
+        }
+        else if (strncmp(sensor, "TEMP", 4) == 0) {
+            uint8_t idx = resetAll ? 255 : (uint8_t)containerToQualIdx(container);
+            if (!resetAll && idx == 255) { sendAck("CAL_ERROR,RESET,BAD_CONTAINER"); return; }
+            cal_resetTemp(idx);
+            snprintf(ack, sizeof(ack), "CAL_RESET,TEMP,%s,OK", container);
+            sendAck(ack);
+        }
+        else {
+            sendAck("CAL_ERROR,RESET,BAD_SENSOR");
+        }
     }
     // ── Calibration mode toggle ──────────────────────────────────────
     //    Format: C,CAL_MODE,ON|OFF

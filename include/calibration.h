@@ -105,6 +105,16 @@ void cal_save();
 void cal_reset();
 
 /**
+ * Per-sensor reset functions — reset one sensor type to factory defaults and save.
+ * Pass idx = 255 to reset all containers of that sensor type.
+ */
+void cal_resetLevel(uint8_t idx);   // idx 0–4 (C2–C6);  255 = all
+void cal_resetPH(uint8_t idx);      // idx 0–2 (C2,C5,C6); 255 = all
+void cal_resetTurb(uint8_t idx);    // idx 0–2 (C2,C5,C6); 255 = all
+void cal_resetTemp(uint8_t idx);    // idx 0–2 (C2,C5,C6); 255 = all
+void cal_resetFlow();               // global — no container index
+
+/**
  * Apply pH calibration to a raw ADC voltage (mV) with Nernst temperature
  * compensation.  The calibration buffers are assumed to have been captured
  * at 25 °C; the slope is scaled by (273.15 + tempC) / 298.15 for other

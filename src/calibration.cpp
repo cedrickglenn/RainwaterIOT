@@ -85,6 +85,52 @@ void cal_reset()
     Serial.println(F("[Cal] Calibration reset to defaults"));
 }
 
+void cal_resetLevel(uint8_t idx)
+{
+    if (idx == 255) {
+        for (uint8_t i = 0; i < CAL_LVL_SENSORS; i++) calData.level[i] = DEFAULTS.level[i];
+    } else if (idx < CAL_LVL_SENSORS) {
+        calData.level[idx] = DEFAULTS.level[idx];
+    }
+    cal_save();
+}
+
+void cal_resetPH(uint8_t idx)
+{
+    if (idx == 255) {
+        for (uint8_t i = 0; i < CAL_QTY_SENSORS; i++) calData.ph[i] = DEFAULTS.ph[i];
+    } else if (idx < CAL_QTY_SENSORS) {
+        calData.ph[idx] = DEFAULTS.ph[idx];
+    }
+    cal_save();
+}
+
+void cal_resetTurb(uint8_t idx)
+{
+    if (idx == 255) {
+        for (uint8_t i = 0; i < CAL_QTY_SENSORS; i++) calData.turb[i] = DEFAULTS.turb[i];
+    } else if (idx < CAL_QTY_SENSORS) {
+        calData.turb[idx] = DEFAULTS.turb[idx];
+    }
+    cal_save();
+}
+
+void cal_resetTemp(uint8_t idx)
+{
+    if (idx == 255) {
+        for (uint8_t i = 0; i < CAL_QTY_SENSORS; i++) calData.tempOffset[i] = DEFAULTS.tempOffset[i];
+    } else if (idx < CAL_QTY_SENSORS) {
+        calData.tempOffset[idx] = DEFAULTS.tempOffset[idx];
+    }
+    cal_save();
+}
+
+void cal_resetFlow()
+{
+    calData.flowPPL = DEFAULTS.flowPPL;
+    cal_save();
+}
+
 void cal_init()
 {
     uint16_t magic = 0;
