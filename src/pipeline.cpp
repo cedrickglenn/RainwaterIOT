@@ -85,7 +85,7 @@ static void stage_container2(const SensorData* data)
     if (backwashState != BW_IDLE) return;
 
     // Skip entirely if C2 level sensor is not calibrated — a zero/garbage
-    // reading satisfies levelHigh (0 <= 20) and would start pumps immediately.
+    // reading gives 0 % which fails levelHigh (0 >= 20) and leaves pumps off.
     if (!cal_isLevelCalibrated(0)) return;
 
     // Overflow guard — stop all inflow if C2 is nearly full
@@ -124,8 +124,8 @@ static void stage_container2(const SensorData* data)
         overflowC3 = false;
     }
 
-    bool levelHigh = (data->levelC2 <= (float)C2_LEVEL_HIGH_CM);
-    bool levelLow  = (data->levelC2 >= (float)C2_LEVEL_LOW_CM);
+    bool levelHigh = (data->levelC2 >= (float)C2_LEVEL_HIGH_CM);
+    bool levelLow  = (data->levelC2 <= (float)C2_LEVEL_LOW_CM);
 
     if (levelHigh && !levelLow) {
         // Water is high enough — pump to charcoal filter
@@ -265,7 +265,7 @@ static void stage_container4(const SensorData* data)
     }
 
     // Skip entirely if C4 level sensor is not calibrated — same startup-glitch
-    // risk as C2: a zero reading satisfies levelHigh and starts PUMP2.
+    // risk as C2: a zero reading gives 0 % which fails levelHigh (0 >= 20).
     if (!cal_isLevelCalibrated(2)) return;
 
     // Overflow guard — C4 nearly full, stop ALL inflow paths.
@@ -287,8 +287,8 @@ static void stage_container4(const SensorData* data)
         overflowC4 = false;
     }
 
-    bool levelHigh = (data->levelC4 <= (float)C4_LEVEL_HIGH_CM);
-    bool levelLow  = (data->levelC4 >= (float)C4_LEVEL_LOW_CM);
+    bool levelHigh = (data->levelC4 >= (float)C4_LEVEL_HIGH_CM);
+    bool levelLow  = (data->levelC4 <= (float)C4_LEVEL_LOW_CM);
 
     if (levelHigh && !levelLow) {
         pump_start(PUMP2_PIN);
@@ -325,8 +325,8 @@ static void stage_container4(const SensorData* data)
 static void stage_container5(const SensorData* data)
 {
     // Skip entirely if C5 level sensor is not calibrated — a zero reading gives
-    // hasWater=true (0 <= 25) and levelLow=false, causing PUMP3/PUMP4/VALVE6/7
-    // to activate with no actual water present.
+    // hasWater=false (0 >= 25 is false), so pumps stay off, but we still guard
+    // to avoid acting on a garbage percentage from an uncalibrated sensor.
     if (!cal_isLevelCalibrated(3)) return;
 
     // Overflow guard — C5 nearly full, stop RO inflow
@@ -348,8 +348,8 @@ static void stage_container5(const SensorData* data)
         pump_stop(PUMP2_PIN);
     }
 
-    bool hasWater = (data->levelC5 <= (float)C5_LEVEL_HIGH_CM);
-    bool levelLow = (data->levelC5 >= (float)C5_LEVEL_LOW_CM);
+    bool hasWater = (data->levelC5 >= (float)C5_LEVEL_HIGH_CM);
+    bool levelLow = (data->levelC5 <= (float)C5_LEVEL_LOW_CM);
 
     if (!hasWater || levelLow) {
         // Not enough water to test or pump — shut everything off
