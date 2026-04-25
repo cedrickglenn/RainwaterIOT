@@ -268,7 +268,9 @@ static void stage_container4(const SensorData* data)
     // risk as C2: a zero reading satisfies levelHigh and starts PUMP2.
     if (!cal_isLevelCalibrated(2)) return;
 
-    // Overflow guard — C4 nearly full, stop ALL inflow paths
+    // Overflow guard — C4 nearly full, stop ALL inflow paths.
+    // Do NOT return here: PUMP2 (C4 → RO → C5) is outflow and must still run
+    // to drain C4 back below the overflow threshold.
     if (data->levelC4 >= (float)C4_LEVEL_OVERFLOW) {
         pump_stop(PUMP1_PIN);      // C2 → charcoal filter pump (feeds V4)
         valve_close(VALVE2_PIN);   // C2 → charcoal filter inlet
@@ -280,7 +282,6 @@ static void stage_container4(const SensorData* data)
             logEvent(LOG_WARNING, LOG_CAT_SYSTEM, F("C4 overflow protection: inflow stopped"));
             comms_sendActuatorStatus();
         }
-        return;
     }
     if (overflowC4 && data->levelC4 <= (float)C4_LEVEL_RESUME) {
         overflowC4 = false;
