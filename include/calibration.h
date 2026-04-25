@@ -45,7 +45,7 @@
 #include <EEPROM.h>
 
 // ── EEPROM magic ─────────────────────────────────────────────────────────
-#define EEPROM_MAGIC        0xCAFF  // bumped from 0xCAFE — forces EEPROM reset after struct change
+#define EEPROM_MAGIC        0xCAFD  // bumped — forces EEPROM reset after struct change (added calMode)
 #define EEPROM_MAGIC_ADDR   0x0000
 
 // ── Sensor count constants ────────────────────────────────────────────────
@@ -77,6 +77,7 @@ struct CalibrationData {
     LevelCalData level[CAL_LVL_SENSORS]; // [0]=C2  [1]=C3  [2]=C4  [3]=C5  [4]=C6
     float        tempOffset[CAL_QTY_SENSORS]; // °C offset: [0]=C2 [1]=C5 [2]=C6
     float        flowPPL;                // Flow sensor pulses-per-litre
+    bool         calMode;                // Persisted calibration mode — restored on reboot
 };
 
 // ── Global calibration data (defined in calibration.cpp) ─────────────────

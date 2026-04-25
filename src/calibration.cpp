@@ -1,4 +1,5 @@
 #include "calibration.h"
+#include "first_flush.h"
 
 /*
  * ═══════════════════════════════════════════════════════════════════════════
@@ -61,6 +62,9 @@ static const CalibrationData DEFAULTS = {
 
     // flowPPL — pulses per litre (YF-S201 typical)
     .flowPPL = 450.0f,
+
+    // calMode — default OFF on first flash
+    .calMode = false,
 };
 
 // ═════════════════════════════════════════════════════════════════════════
@@ -93,6 +97,14 @@ void cal_init()
         // First boot — EEPROM has never been written
         Serial.println(F("[Cal] No EEPROM data found — loading defaults"));
         cal_reset();
+    }
+
+    // Restore calibration mode into the first-flush module.
+    // cal_init() is called before firstFlush_init(), so this arms the flag
+    // before the state machine starts — the operator lands where they left off.
+    if (calData.calMode) {
+        firstFlush_setCalMode(true);
+        Serial.println(F("[Cal] Calibration mode restored from EEPROM"));
     }
 }
 

@@ -201,14 +201,16 @@ void comms_sendData(const SensorData* data,
     Serial1.println(data->rawFlowPulses);
 
     // ── Aggregated system state ─────────────────────────────────────
-    //    Format: "S,STATE,<ff_state>,<filter_mode>,<backwash_state>\n"
-    //    Values are integer enum ordinals (0, 1, 2...)
+    //    Format: "S,STATE,<ff_state>,<filter_mode>,<backwash_state>,<cal_mode>\n"
+    //    Values are integer enum ordinals (0, 1, 2...) except cal_mode (0/1)
     Serial1.print(F("S,STATE,"));
     Serial1.print((int)ffState);
     Serial1.print(',');
     Serial1.print((int)filterMode);
     Serial1.print(',');
-    Serial1.println((int)bwState);
+    Serial1.print((int)bwState);
+    Serial1.print(',');
+    Serial1.println(firstFlush_isCalMode() ? 1 : 0);
 
     // ── Live actuator states — one compact line per telemetry frame ────
     // Format: S,ACTUATORS,V1:0,V2:1,...,P1:0,...
@@ -627,6 +629,8 @@ static void processCommand(const char* cmd)
         const char* modeStr = payload + 9;
         if (strncmp(modeStr, "ON", 2) == 0) {
             firstFlush_setCalMode(true);
+            calData.calMode = true;
+            cal_save();
             valve_close(VALVE1_PIN);
             valve_close(VALVE8_PIN);
             // Reset pH EMA so the upcoming MID/LOW capture reads live probe
@@ -636,6 +640,8 @@ static void processCommand(const char* cmd)
             logEvent(LOG_INFO, LOG_CAT_CALIBRATION, F("Calibration mode ON — FF suspended"));
         } else if (strncmp(modeStr, "OFF", 3) == 0) {
             firstFlush_setCalMode(false);
+            calData.calMode = false;
+            cal_save();
             firstFlush_reset();
             sendAck("CAL_MODE,OFF,OK");
             logEvent(LOG_INFO, LOG_CAT_CALIBRATION, F("Calibration mode OFF — FF resumed"));

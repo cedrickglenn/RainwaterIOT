@@ -565,13 +565,17 @@ bool pipeline_isWaterPotable(const SensorData* data)
     bool turbOK = (data->turbidityC5 <= WQ_TURBIDITY_MAX_NTU);
     bool tempOK = (data->tempC5 >= WQ_TEMP_MIN_C) && (data->tempC5 <= WQ_TEMP_MAX_C);
 
-    if (!phOK) {
-        logEvent(LOG_WARNING, LOG_CAT_SENSOR,
-                 String("pH out of range: ") + String(data->phC5, 2));
-    }
-    if (!turbOK) {
-        logEvent(LOG_WARNING, LOG_CAT_SENSOR,
-                 String("Turbidity out of range: ") + String(data->turbidityC5, 1));
+    // Sensor quality WARNs are suppressed during calibration mode — probes are
+    // out of the water (in buffer solutions) so out-of-range readings are expected.
+    if (!firstFlush_isCalMode()) {
+        if (!phOK) {
+            logEvent(LOG_WARNING, LOG_CAT_SENSOR,
+                     String("pH out of range: ") + String(data->phC5, 2));
+        }
+        if (!turbOK) {
+            logEvent(LOG_WARNING, LOG_CAT_SENSOR,
+                     String("Turbidity out of range: ") + String(data->turbidityC5, 1));
+        }
     }
 
     // Uncomment during development to see every quality evaluation:
