@@ -688,13 +688,29 @@ static void processCommand(const char* cmd)
             firstFlush_setCalMode(true);
             calData.calMode = true;
             cal_save();
+            // Stop every pipeline actuator so the operator starts from a known-off
+            // state. pipeline_update() skips all stages while cal mode is active, so
+            // nothing will restart these automatically.
+            pump_stop(PUMP1_PIN);
+            pump_stop(PUMP2_PIN);
+            pump_stop(PUMP3_PIN);
+            pump_stop(PUMP4_PIN);
             valve_close(VALVE1_PIN);
+            valve_close(VALVE2_PIN);
+            valve_close(VALVE3_PIN);
+            valve_close(VALVE4_PIN);
+            valve_close(VALVE5_PIN);
+            valve_close(VALVE6_PIN);
+            valve_close(VALVE7_PIN);
             valve_close(VALVE8_PIN);
+            // Also abort any in-progress backwash so its state machine doesn't
+            // resume mid-cycle when cal mode is turned off.
+            pipeline_stopBackwash();
             // Reset pH EMA so the upcoming MID/LOW capture reads live probe
             // voltage rather than a history-weighted average from normal operation.
             sensors_resetPhEma();
             sendAck("CAL_MODE,ON,OK");
-            logEvent(LOG_INFO, LOG_CAT_CALIBRATION, F("Calibration mode ON — FF suspended"));
+            logEvent(LOG_INFO, LOG_CAT_CALIBRATION, F("Calibration mode ON — all actuators off"));
         } else if (strncmp(modeStr, "OFF", 3) == 0) {
             firstFlush_setCalMode(false);
             calData.calMode = false;

@@ -381,19 +381,6 @@ static void stage_container5(const SensorData* data)
         c5WasEmpty = false;
     }
 
-    // Calibration mode: bypass quality gate entirely so operators can run P3/V6/V7
-    // freely while tuning sensors. Level and overflow guards above still apply.
-    if (firstFlush_isCalMode()) {
-        if (lastC5Routing != 1) {
-            lastC5Routing = 1;
-            pump_start(PUMP3_PIN);
-            valve_open(VALVE7_PIN);
-            valve_close(VALVE6_PIN);
-            pump_stop(PUMP4_PIN);
-        }
-        return;
-    }
-
     // We have enough water — evaluate quality against PNSDW 2017.
     // Require QUALITY_PASS_REQUIRED consecutive passes before routing to C6.
     // This guards against residual ADC noise and pump-agitation transients
@@ -435,8 +422,20 @@ static void stage_container5(const SensorData* data)
         }
 
         if (qualityFailCount >= QUALITY_FAIL_REQUIRED) {
-            // CONFIRMED FAIL → recycle to Container 4 for re-treatment
-            if (lastC5Routing != 4) {
+            // CONFIRMED FAIL → recycle to Container 4 for re-treatment.
+            // Skip if C4 is at overflow — stage_container4 would immediately
+            // kill P4/V6, and pumping into a full tank would worsen the overflow.
+            if (cal_isLevelCalibrated(2) && data->levelC4 >= (float)C4_LEVEL_OVERFLOW) {
+                // Hold in C5 until C4 drains enough to accept recycled water
+                if (lastC5Routing != 2) {
+                    lastC5Routing = 2;
+                    pump_stop(PUMP3_PIN);
+                    valve_close(VALVE6_PIN);
+                    valve_close(VALVE7_PIN);
+                    pump_stop(PUMP4_PIN);
+                }
+                Serial.println(F("[Quality] FAIL — recycle blocked, C4 full"));
+            } else if (lastC5Routing != 4) {
                 lastC5Routing = 4;
                 pump_start(PUMP3_PIN);
                 valve_close(VALVE7_PIN);
