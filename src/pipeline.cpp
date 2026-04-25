@@ -470,21 +470,24 @@ static void stage_container6(const SensorData* data)
 //
 static void stage_calModeOverflow(const SensorData* data)
 {
-    // C2 overflow — close V1 (inlet from roof) if open
+    // C2 overflow — close V1 (inlet from roof) if open.
+    // Latch is set regardless of V1 state so a passive overflow is tracked correctly.
     if (cal_isLevelCalibrated(0) && data->levelC2 >= (float)C2_LEVEL_OVERFLOW) {
         if (actuator_isOn(VALVE1_PIN)) {
             valve_close(VALVE1_PIN);
-            if (!overflowC2) {
-                overflowC2 = true;
-                logEvent(LOG_WARNING, LOG_CAT_SYSTEM, F("CAL: C2 overflow — V1 closed"));
-                comms_sendActuatorStatus();
-            }
+        }
+        if (!overflowC2) {
+            overflowC2 = true;
+            logEvent(LOG_WARNING, LOG_CAT_SYSTEM, F("CAL: C2 overflow — V1 closed"));
+            comms_sendActuatorStatus();
         }
     } else if (overflowC2 && cal_isLevelCalibrated(0) && data->levelC2 <= (float)C2_LEVEL_RESUME) {
         overflowC2 = false;
     }
 
-    // C3 overflow — close V2/V3/V4 and stop P1 if any are active
+    // C3 overflow — close V2/V3/V4 and stop P1 if any are active.
+    // Set the latch regardless of whether actuators were on so that the warning
+    // and status push fire exactly once even if overflow was reached passively.
     if (cal_isLevelCalibrated(1) && data->levelC3 >= (float)C3_LEVEL_OVERFLOW) {
         bool anyOn = actuator_isOn(PUMP1_PIN) || actuator_isOn(VALVE2_PIN) ||
                      actuator_isOn(VALVE3_PIN) || actuator_isOn(VALVE4_PIN);
@@ -493,17 +496,18 @@ static void stage_calModeOverflow(const SensorData* data)
             valve_close(VALVE2_PIN);
             valve_close(VALVE3_PIN);
             valve_close(VALVE4_PIN);
-            if (!overflowC3) {
-                overflowC3 = true;
-                logEvent(LOG_WARNING, LOG_CAT_SYSTEM, F("CAL: C3 overflow — feed stopped"));
-                comms_sendActuatorStatus();
-            }
+        }
+        if (!overflowC3) {
+            overflowC3 = true;
+            logEvent(LOG_WARNING, LOG_CAT_SYSTEM, F("CAL: C3 overflow — feed stopped"));
+            comms_sendActuatorStatus();
         }
     } else if (overflowC3 && cal_isLevelCalibrated(1) && data->levelC3 <= (float)C3_LEVEL_RESUME) {
         overflowC3 = false;
     }
 
-    // C4 overflow — close all C4 inflow paths if any are active
+    // C4 overflow — close all C4 inflow paths if any are active.
+    // Latch is set regardless so a passive overflow is tracked correctly.
     if (cal_isLevelCalibrated(2) && data->levelC4 >= (float)C4_LEVEL_OVERFLOW) {
         bool anyOn = actuator_isOn(PUMP1_PIN) || actuator_isOn(VALVE2_PIN) ||
                      actuator_isOn(VALVE4_PIN) || actuator_isOn(VALVE6_PIN) ||
@@ -514,25 +518,26 @@ static void stage_calModeOverflow(const SensorData* data)
             valve_close(VALVE4_PIN);
             valve_close(VALVE6_PIN);
             pump_stop(PUMP4_PIN);
-            if (!overflowC4) {
-                overflowC4 = true;
-                logEvent(LOG_WARNING, LOG_CAT_SYSTEM, F("CAL: C4 overflow — inflow stopped"));
-                comms_sendActuatorStatus();
-            }
+        }
+        if (!overflowC4) {
+            overflowC4 = true;
+            logEvent(LOG_WARNING, LOG_CAT_SYSTEM, F("CAL: C4 overflow — inflow stopped"));
+            comms_sendActuatorStatus();
         }
     } else if (overflowC4 && cal_isLevelCalibrated(2) && data->levelC4 <= (float)C4_LEVEL_RESUME) {
         overflowC4 = false;
     }
 
-    // C5 overflow — stop P2 (RO pump → C5) if running
+    // C5 overflow — stop P2 (RO pump → C5) if running.
+    // Latch is set regardless so a passive overflow is tracked correctly.
     if (cal_isLevelCalibrated(3) && data->levelC5 >= (float)C5_LEVEL_OVERFLOW) {
         if (actuator_isOn(PUMP2_PIN)) {
             pump_stop(PUMP2_PIN);
-            if (!overflowC5) {
-                overflowC5 = true;
-                logEvent(LOG_WARNING, LOG_CAT_SYSTEM, F("CAL: C5 overflow — P2 stopped"));
-                comms_sendActuatorStatus();
-            }
+        }
+        if (!overflowC5) {
+            overflowC5 = true;
+            logEvent(LOG_WARNING, LOG_CAT_SYSTEM, F("CAL: C5 overflow — P2 stopped"));
+            comms_sendActuatorStatus();
         }
     } else if (overflowC5 && cal_isLevelCalibrated(3) && data->levelC5 <= (float)C5_LEVEL_RESUME) {
         overflowC5 = false;

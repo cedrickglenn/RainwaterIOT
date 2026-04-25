@@ -131,13 +131,31 @@ static float readUltrasonic(Ultrasonic& sensor, uint8_t idx)
 {
     float raw = (float)sensor.read();
 
-    // Hard validity bounds — HC-SR04 reliable range is ~2–400 cm
-    if (raw <= 0.0f || raw > 400.0f) {
+    // Hard validity bounds — HC-SR04 reliable range is ~2–400 cm.
+    //
+    // raw == 0 means the echo returned too fast to resolve — the water surface
+    // is inside the sensor's blind zone (< ~2 cm).  This happens when the tank
+    // is AT or ABOVE its calibrated full point.  Returning usLastGood here would
+    // report a level BELOW full, causing overflow protection to miss the trip.
+    // Instead, return 0 directly so cal_applyLevel() sees a distance smaller
+    // than fullCm and clamps the result to 100 % — triggering overflow correctly.
+    //
+    // raw > 400 means no echo received (sensor out of range or wiring fault).
+    // That is a genuine "unknown" — fall back to the last good reading.
+    if (raw > 400.0f) {
         Serial.print(F("[US] Sensor "));
         Serial.print(idx);
         Serial.print(F(" rejected (out of range): "));
         Serial.println(raw);
-        return (usLastGood[idx] >= 0.0f) ? usLastGood[idx] : raw;
+        return (usLastGood[idx] >= 0.0f) ? usLastGood[idx] : 400.0f;
+    }
+    if (raw <= 0.0f) {
+        // Blind zone — treat as full (distance = 0, level clamps to 100 %)
+        Serial.print(F("[US] Sensor "));
+        Serial.print(idx);
+        Serial.println(F(" blind zone — treating as full"));
+        usLastGood[idx] = 0.0f;
+        return 0.0f;
     }
 
     // Delta check — reject implausible jumps vs last accepted reading
