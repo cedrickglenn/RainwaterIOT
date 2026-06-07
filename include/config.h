@@ -124,17 +124,31 @@
 // ── Flow Sensor ─────────────────────────────────────────────────────────
 // Minimum flow rate to consider as "active flow".
 // Filters out sensor noise when no water is actually moving.
-#define FLOW_MIN_THRESHOLD     0.5f  // L/min
+#define FLOW_MIN_THRESHOLD     0.3f  // L/min
 
-// How long flow must be sustained before Valve 8 (first-flush diverter)
-// opens.  The flow sensor is upstream of V8 — this delay lets water
-// travel the pipe length so we don't actuate on a splash or sensor
-// transient.  3 seconds at typical gutter flow is sufficient.
+// How long the IDLE state holds V8 open to check for rain.
+// Must be long enough to allow the pipe stub to drain, water to reach the
+// sensor, and at least 3 sensor read cycles (3× SENSOR_READ_INTERVAL_MS)
+// to capture a non-zero flow reading.  8 s gives ~6 read cycles and
+// accommodates ~2 s of pipe-fill latency before the first valid reading.
+#define IDLE_PULSE_MS          8000UL  // 8 seconds
+
+// How long flow must be sustained (in CONFIRMING state) before diverting.
+// V8 is already open when CONFIRMING starts, so water is moving — 3 s
+// is enough for confidence without delay.
 #define FLOW_CONFIRM_MS        3000UL  // 3 seconds
 
+// Volume to divert before switching to COLLECTING (dual time+volume gate).
+// Whichever threshold is reached first (time OR volume) ends the flush.
+#define FF_VOLUME_LITRES        20.0f     // litres
+
+// Skip re-flush if rain returns within this window after a completed session.
+// Prevents flushing already-clean roof water after a brief dry interval.
+#define FF_REENTRY_WINDOW_MS    7200000UL // 2 hours
+
 // How often the IDLE state pulses V8 open to check for rain.
-// Each pulse lasts FLOW_CONFIRM_MS (3 s); the rest of the interval V8
-// is closed.  60 s interval = ~5% duty cycle — protects valve lifespan.
+// Each pulse lasts IDLE_PULSE_MS (8 s); the rest of the interval V8
+// is closed.  60 s interval = ~13% duty cycle.
 #define IDLE_RAIN_CHECK_INTERVAL_MS  60000UL  // 60 seconds
 
 // ── Serial Baud Rates ───────────────────────────────────────────────────

@@ -192,7 +192,7 @@ void loop()
     // ── 2. FIRST FLUSH DIVERTER ─────────────────────────────────────
     //    Controls Valve 1 (to Container 2) and Valve 8 (to drainage).
     //    Must run every tick for responsive state transitions.
-    firstFlush_update(sensors_isFlowActive());
+    firstFlush_update(sensors_isFlowActive(), sensorData.flowRate);
 
     // ── 3. WATER TREATMENT PIPELINE ─────────────────────────────────
     //    Manages all stages from Container 2 through Container 6.

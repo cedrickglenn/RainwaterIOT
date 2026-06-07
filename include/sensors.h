@@ -150,4 +150,10 @@ void sensors_setFlowThreshold(float lpm);
  */
 void sensors_resetPhEma();
 
+/**
+ * Return the most recent flow rate (L/min) computed by sensors_readAll().
+ * Returns 0.0 if no reading has been taken yet or flow is below threshold.
+ */
+float sensors_getFlowRate();
+
 #endif // SENSORS_H

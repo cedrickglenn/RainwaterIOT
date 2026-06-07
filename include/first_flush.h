@@ -100,9 +100,10 @@ void firstFlush_init();
  * Run one tick of the first flush state machine.
  * Must be called every iteration of loop() (it is non-blocking).
  *
- * @param flowActive  true if the flow sensor reads above FLOW_MIN_THRESHOLD
+ * @param flowActive   true if the flow sensor reads above FLOW_MIN_THRESHOLD
+ * @param flowRateLpm  instantaneous flow rate in L/min (used for volume accumulation)
  */
-void firstFlush_update(bool flowActive);
+void firstFlush_update(bool flowActive, float flowRateLpm);
 
 /**
  * Return the current state (for reporting to ESP32 / debug).
@@ -133,5 +134,17 @@ bool firstFlush_isCalMode();
  * before transitioning to COLLECTING). Default: FIRST_FLUSH_DURATION_MS.
  */
 void firstFlush_setDuration(unsigned long ms);
+
+/** Runtime-settable volume gate (litres to divert before switching to COLLECTING). */
+void firstFlush_setVolume(float litres);
+
+/** Runtime-settable re-entry window (skip re-flush if rain returns within this ms). */
+void firstFlush_setReentryWindow(unsigned long ms);
+
+/** Cumulative litres diverted in the current or most recent flush session (telemetry). */
+float firstFlush_getDivertedLitres();
+
+/** True if this rain session has already completed a full flush (telemetry/dashboard). */
+bool firstFlush_isSessionFlushed();
 
 #endif // FIRST_FLUSH_H

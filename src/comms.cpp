@@ -222,6 +222,11 @@ void comms_sendData(const SensorData* data,
     Serial1.print(F("S,RAW_FLOW_PULSES,"));
     Serial1.println(data->rawFlowPulses);
 
+    // ── First flush session telemetry ───────────────────────────────
+    sendLine("FF_LITRES",  firstFlush_getDivertedLitres(), 1);
+    Serial1.print(F("S,FF_SESSION,"));
+    Serial1.println(firstFlush_isSessionFlushed() ? 1 : 0);
+
     // ── Aggregated system state ─────────────────────────────────────
     //    Format: "S,STATE,<ff_state>,<filter_mode>,<backwash_state>,<cal_mode>\n"
     //    Values are integer enum ordinals (0, 1, 2...) except cal_mode (0/1)
@@ -746,6 +751,22 @@ static void processCommand(const char* cmd)
             sendAck(ack);
             logEvent(LOG_INFO, LOG_CAT_FILTER,
                      String("FF duration -> ") + String(ms / 1000UL) + " s");
+        } else if (strncmp(sub, "VOLUME,", 7) == 0) {
+            float litres = atof(sub + 7);
+            firstFlush_setVolume(litres);
+            char ack[40];
+            snprintf(ack, sizeof(ack), "FF_CONFIG,VOLUME,OK,%.1f", litres);
+            sendAck(ack);
+            logEvent(LOG_INFO, LOG_CAT_FILTER,
+                     String("FF volume -> ") + String(litres, 1) + " L");
+        } else if (strncmp(sub, "REENTRY,", 8) == 0) {
+            unsigned long ms = (unsigned long)atol(sub + 8);
+            firstFlush_setReentryWindow(ms);
+            char ack[40];
+            snprintf(ack, sizeof(ack), "FF_CONFIG,REENTRY,OK,%lu", ms);
+            sendAck(ack);
+            logEvent(LOG_INFO, LOG_CAT_FILTER,
+                     String("FF re-entry -> ") + String(ms / 1000UL) + " s");
         } else {
             sendAck("FF_CONFIG,ERR,BAD_PARAM");
         }

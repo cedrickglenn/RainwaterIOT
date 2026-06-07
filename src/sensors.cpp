@@ -33,6 +33,7 @@
 static FlowSensor     flowSensor(YFS201, FLOW_SENSOR_PIN);
 static float          lastFlowRate      = 0.0f;
 static unsigned long  lastTotalPulses   = 0UL;  // for computing per-interval delta
+static unsigned long  lastFlowReadMs    = 0UL;  // wall-clock time of last read, for L/min calc
 
 // Flow threshold — settable at runtime via sensors_setFlowThreshold().
 // Defaults to the compile-time constant so existing behaviour is unchanged.
@@ -271,6 +272,7 @@ void sensors_init()
     // with the external one — harmless but unnecessary.
     // No separate pinMode() call needed; begin() configures the pin itself.
     flowSensor.begin(sensors_flowISR, true);  // true = external pull-up fitted
+    lastFlowReadMs = millis();  // seed so first interval isn't inflated by boot time
 
     // Temperature buses — disable blocking wait so requestTemperatures() returns
     // immediately (conversion happens in the sensor's internal circuit over ~750ms).
@@ -316,23 +318,32 @@ void sensors_readAll(SensorData* data)
     { float t = tempC6.getTempCByIndex(0); data->rawTempC6 = t; data->tempC6 = cal_applyTemp(2, t); }
 
     // ── Flow rate ───────────────────────────────────────────────────
+    // Call read() to latch & zero the ISR pulse counter into _totalpulse.
     flowSensor.read();
 
-    // Compute per-interval pulse delta from the cumulative total.
-    // getPulse() returns _totalpulse (cumulative); read() adds the just-cleared
-    // _pulse to it before zeroing _pulse — so the delta is valid post-read().
+    // Compute L/min directly from the pulse delta and elapsed wall time.
+    // This bypasses getFlowRate_m() whose internal _timebefore=0 init can
+    // produce inflated denominators on first call, and whose integer-elapsed
+    // time division loses precision at sub-second intervals.
+    //
+    // Formula: pulses_per_interval / pulses_per_litre / elapsed_minutes
+    //   YFS201 = 450 pulses/litre  →  pulses / 450 = litres in this interval
+    //   divide by elapsed minutes  →  L/min
     {
-        unsigned long total = flowSensor.getPulse();
-        data->rawFlowPulses = total - lastTotalPulses;
-        lastTotalPulses     = total;
-    }
+        unsigned long now        = millis();
+        unsigned long total      = flowSensor.getPulse();
+        unsigned long deltaPulse = total - lastTotalPulses;
+        lastTotalPulses          = total;
+        data->rawFlowPulses      = deltaPulse;
 
-    // getFlowRate_m() can return inf on the first call (elapsed time ≈ 0 due
-    // to _timebefore initialising to 0) or spurious values from noise pulses.
-    // isfinite() rejects inf/nan; FLOW_MIN_THRESHOLD rejects the noise floor.
-    {
-        float raw      = flowSensor.getFlowRate_m();
-        lastFlowRate   = (isfinite(raw) && raw >= flowThreshold) ? raw : 0.0f;
+        float elapsedMin = (float)(now - lastFlowReadMs) / 60000.0f;
+        lastFlowReadMs   = now;
+
+        float computed = (elapsedMin > 0.0f)
+                       ? ((float)deltaPulse / 450.0f) / elapsedMin
+                       : 0.0f;
+
+        lastFlowRate   = (computed >= flowThreshold) ? computed : 0.0f;
         data->flowRate = lastFlowRate;
     }
 
@@ -400,6 +411,9 @@ void sensors_setFlowThreshold(float lpm)
     Serial.print(lpm, 2);
     Serial.println(F(" L/min"));
 }
+
+// ─────────────────────────────────────────────────────────────────────────
+float sensors_getFlowRate() { return lastFlowRate; }
 
 // ─────────────────────────────────────────────────────────────────────────
 void sensors_resetPhEma()
