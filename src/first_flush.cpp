@@ -51,6 +51,14 @@ static float ffVolumeLitres = FF_VOLUME_LITRES;
 // Re-entry window — skip re-flush if rain returns within this ms.
 static unsigned long ffReentryWindowMs = FF_REENTRY_WINDOW_MS;
 
+// Runtime-settable idle pulse and flow-timeout durations.
+static unsigned long ffIdlePulseMs   = IDLE_PULSE_MS;
+static unsigned long ffFlowTimeoutMs = FLOW_TIMEOUT_MS;
+
+// Pause state — saved when flow drops mid-flush.
+static unsigned long pauseStartMs = 0;
+static bool          pauseResume  = false;
+
 // When true, firstFlush_update() is skipped and firstFlush_reset() suppresses
 // the V8 idle pulse. Lets the operator hold valves manually during calibration.
 static bool calModeActive = false;
@@ -137,7 +145,7 @@ void firstFlush_update(bool flowActive, float flowRateLpm)
                     Serial.print(F("[FirstFlush] Flow during pulse -> CONFIRMING"));
                     if (reentryPending) Serial.print(F(" (re-entry, skip DIVERTING)"));
                     Serial.println();
-                } else if ((now - idleCheckStartMs) >= IDLE_PULSE_MS) {
+                } else if ((now - idleCheckStartMs) >= ffIdlePulseMs) {
                     // Pulse window expired, no flow — close V8 and sleep
                     enterIdleSleep(now);
                     Serial.println(F("[FirstFlush] Pulse expired, no flow -> sleeping"));
@@ -157,7 +165,18 @@ void firstFlush_update(bool flowActive, float flowRateLpm)
             if (flowActive) {
                 lastFlowSeenMs = now;
                 if ((now - confirmStartMs) >= FLOW_CONFIRM_MS) {
-                    if (reentryPending) {
+                    if (pauseResume) {
+                        // Resuming after FF_PAUSED — skip back to DIVERTING with counters intact
+                        pauseResume    = false;
+                        state          = FF_DIVERTING;
+                        lastFlowSeenMs = now;
+                        logEvent(LOG_INFO, LOG_CAT_FILTER, F("FF_DIVERTING (resumed)"));
+                        Serial.print(F("[FirstFlush] Confirmed -> DIVERTING resumed ("));
+                        Serial.print(flowConsistentMs / 1000UL);
+                        Serial.print(F(" s / "));
+                        Serial.print(divertedLitres, 1);
+                        Serial.println(F(" L carried over)"));
+                    } else if (reentryPending) {
                         // Re-entry path: roof already flushed — skip DIVERTING,
                         // close V8, open V1, go straight to COLLECTING.
                         reentryPending = false;
@@ -212,15 +231,54 @@ void firstFlush_update(bool flowActive, float flowRateLpm)
                     Serial.println(F(" L"));
                 }
             } else {
-                if ((now - lastFlowSeenMs) > FLOW_TIMEOUT_MS) {
-                    // Rain stopped — reset to IDLE sleep (no immediate pulse)
-                    state = FF_IDLE;
+                if ((now - lastFlowSeenMs) > ffFlowTimeoutMs) {
+                    // Rain paused — save progress and enter FF_PAUSED
+                    state        = FF_PAUSED;
+                    pauseStartMs = now;
+                    pauseResume  = false;
                     valve_close(VALVE8_PIN);
                     valve_close(VALVE1_PIN);
-                    idlePulsing      = false;
-                    idleCheckStartMs = now;
-                    logEvent(LOG_INFO, LOG_CAT_FILTER, F("FF_IDLE"));
-                    Serial.println(F("[FirstFlush] Flow timeout -> IDLE (sleeping)"));
+                    enterIdlePulse(now);
+                    logEvent(LOG_INFO, LOG_CAT_FILTER, F("FF_PAUSED"));
+                    Serial.print(F("[FirstFlush] Flow timeout -> PAUSED (saved "));
+                    Serial.print(flowConsistentMs / 1000UL);
+                    Serial.print(F(" s / "));
+                    Serial.print(divertedLitres, 1);
+                    Serial.println(F(" L)"));
+                }
+            }
+            break;
+
+        // ── PAUSED — mid-flush rain pause, watching for return ──────
+        case FF_PAUSED:
+            if ((now - pauseStartMs) >= ffReentryWindowMs) {
+                // Re-entry window expired — discard progress and return to IDLE
+                state            = FF_IDLE;
+                divertedLitres   = 0.0f;
+                flowConsistentMs = 0;
+                idlePulsing      = false;
+                idleCheckStartMs = now;
+                valve_close(VALVE8_PIN);
+                logEvent(LOG_INFO, LOG_CAT_FILTER, F("FF_IDLE"));
+                Serial.println(F("[FirstFlush] Pause expired -> IDLE (progress discarded)"));
+                break;
+            }
+            if (idlePulsing) {
+                if (flowActive) {
+                    // Rain returned — re-enter CONFIRMING, then resume DIVERTING
+                    pauseResume    = true;
+                    state          = FF_CONFIRMING;
+                    confirmStartMs = now;
+                    lastFlowSeenMs = now;
+                    idlePulsing    = false;
+                    logEvent(LOG_INFO, LOG_CAT_FILTER, F("FF_CONFIRMING (resume)"));
+                    Serial.println(F("[FirstFlush] Flow during pause -> CONFIRMING (will resume)"));
+                } else if ((now - idleCheckStartMs) >= ffIdlePulseMs) {
+                    enterIdleSleep(now);
+                }
+            } else {
+                if ((now - idleCheckStartMs) >= IDLE_RAIN_CHECK_INTERVAL_MS) {
+                    enterIdlePulse(now);
                 }
             }
             break;
@@ -235,7 +293,7 @@ void firstFlush_update(bool flowActive, float flowRateLpm)
             bool windowExpired = (now - collectStartMs) >= COLLECTION_WINDOW_MS;
 
             if (windowExpired && !flowActive) {
-                if ((now - lastFlowSeenMs) > FLOW_TIMEOUT_MS) {
+                if ((now - lastFlowSeenMs) > ffFlowTimeoutMs) {
                     state             = FF_IDLE;
                     lastCollectEndMs  = now;
                     sessionFlushed    = true;
@@ -270,8 +328,11 @@ void firstFlush_reset()
     unsigned long now = millis();
     state            = FF_IDLE;
     divertedLitres   = 0.0f;
+    flowConsistentMs = 0;
     sessionFlushed   = false;
     reentryPending   = false;
+    pauseResume      = false;
+    pauseStartMs     = 0;
     lastCollectEndMs = 0;
     valve_close(VALVE1_PIN);
     // Open V8 as a purge pulse — same behaviour as init()
@@ -319,6 +380,24 @@ void firstFlush_setReentryWindow(unsigned long ms)
     Serial.print(F("[FirstFlush] Re-entry window set to "));
     Serial.print(ms / 60000UL);
     Serial.println(F(" min"));
+}
+
+// ═════════════════════════════════════════════════════════════════════════
+void firstFlush_setIdlePulseMs(unsigned long ms)
+{
+    ffIdlePulseMs = ms;
+    Serial.print(F("[FirstFlush] Idle pulse duration set to "));
+    Serial.print(ms / 1000UL);
+    Serial.println(F(" s"));
+}
+
+// ═════════════════════════════════════════════════════════════════════════
+void firstFlush_setFlowTimeoutMs(unsigned long ms)
+{
+    ffFlowTimeoutMs = ms;
+    Serial.print(F("[FirstFlush] Flow timeout set to "));
+    Serial.print(ms / 1000UL);
+    Serial.println(F(" s"));
 }
 
 // ═════════════════════════════════════════════════════════════════════════

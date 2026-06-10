@@ -86,6 +86,7 @@ enum FirstFlushState {
     FF_IDLE,          // No rain — everything closed, flow sensor watching
     FF_CONFIRMING,    // Flow detected — waiting FLOW_CONFIRM_MS before opening V8
     FF_DIVERTING,     // Confirmed rain — diverting first flush to drain
+    FF_PAUSED,        // Flow dropped mid-flush, progress saved, watching for return
     FF_COLLECTING     // First flush done — collecting into Container 2
 };
 
@@ -140,6 +141,12 @@ void firstFlush_setVolume(float litres);
 
 /** Runtime-settable re-entry window (skip re-flush if rain returns within this ms). */
 void firstFlush_setReentryWindow(unsigned long ms);
+
+/** Runtime-settable idle rain-check pulse duration (default: IDLE_PULSE_MS). */
+void firstFlush_setIdlePulseMs(unsigned long ms);
+
+/** Runtime-settable flow-dropout timeout before entering FF_PAUSED (default: FLOW_TIMEOUT_MS). */
+void firstFlush_setFlowTimeoutMs(unsigned long ms);
 
 /** Cumulative litres diverted in the current or most recent flush session (telemetry). */
 float firstFlush_getDivertedLitres();

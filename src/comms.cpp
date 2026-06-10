@@ -767,6 +767,22 @@ static void processCommand(const char* cmd)
             sendAck(ack);
             logEvent(LOG_INFO, LOG_CAT_FILTER,
                      String("FF re-entry -> ") + String(ms / 1000UL) + " s");
+        } else if (strncmp(sub, "IDLE_PULSE,", 11) == 0) {
+            unsigned long ms = (unsigned long)atol(sub + 11);
+            firstFlush_setIdlePulseMs(ms);
+            char ack[40];
+            snprintf(ack, sizeof(ack), "FF_CONFIG,IDLE_PULSE,OK,%lu", ms);
+            sendAck(ack);
+            logEvent(LOG_INFO, LOG_CAT_FILTER,
+                     String("FF idle pulse -> ") + String(ms) + " ms");
+        } else if (strncmp(sub, "FLOW_TIMEOUT,", 13) == 0) {
+            unsigned long ms = (unsigned long)atol(sub + 13);
+            firstFlush_setFlowTimeoutMs(ms);
+            char ack[40];
+            snprintf(ack, sizeof(ack), "FF_CONFIG,FLOW_TIMEOUT,OK,%lu", ms);
+            sendAck(ack);
+            logEvent(LOG_INFO, LOG_CAT_FILTER,
+                     String("FF flow timeout -> ") + String(ms / 1000UL) + " s");
         } else {
             sendAck("FF_CONFIG,ERR,BAD_PARAM");
         }
