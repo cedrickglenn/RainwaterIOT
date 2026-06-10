@@ -193,10 +193,10 @@ static float readUltrasonic(Ultrasonic& sensor, uint8_t idx)
     return b;
 }
 
-// Samples averaged per turbidity read. 8 samples × 2 ms = 16 ms per sensor,
-// 48 ms total for C2+C5+C6. Keeps worst-case ACK latency (sensors_readAll +
-// cal command read) at ~108 ms — well inside the ESP32's 200 ms drain window.
-static const uint8_t TURB_AVG_SAMPLES = 8;
+// Samples averaged per turbidity read. 10 samples × 2 ms = 20 ms per sensor,
+// 60 ms total for C2+C5+C6. Worst-case sensors_readAll() (pH 60ms + turb 60ms)
+// = ~120 ms — still well inside the ESP32's 200 ms drain window.
+static const uint8_t TURB_AVG_SAMPLES = 10;
 
 // Average TURB_AVG_SAMPLES ADC reads with a short inter-sample delay.
 // The delay lets the ADC input cap recharge between reads, reducing sample
@@ -209,20 +209,6 @@ static float readTurbAvgVolts(uint8_t analogPin)
         delay(2);
     }
     return (sum / (float)TURB_AVG_SAMPLES) * (5.0f / 1024.0f);
-}
-
-/**
- * Read turbidity sensor and return NTU via calibration module.
- * Raw voltage is passed to cal_applyTurb() which uses the stored
- * zero-point and slope set during calibration.
- *
- * @param analogPin  Pin to read
- * @param calIdx     Calibration index: 0=C2, 1=C5, 2=C6
- */
-static float readTurbidityNTU(uint8_t analogPin, uint8_t calIdx)
-{
-    float volt = readTurbAvgVolts(analogPin);
-    return cal_applyTurb(calIdx, volt);
 }
 
 /**
@@ -362,21 +348,42 @@ void sensors_readAll(SensorData* data)
     // EMA then filters across successive 1-second cycles (zero blocking time).
     // rawMvCx = the averaged-but-pre-EMA value, sent as RAW_MV telemetry.
     // emaMvCx = the EMA-smoothed value passed to cal_applyPH() and the pipeline.
-    { float v = sensors_readTurbVoltage(TURB_C2_PIN); data->rawTurbVC2 = v; data->turbidityC2 = cal_applyTurb(0, v); }
+    {
+        float v = sensors_readTurbVoltage(TURB_C2_PIN);
+        data->rawTurbVC2 = v;
+        float adj = v - (calData.turb[0].zeroV - 4.1f);
+        if (adj < 0.0f) adj = 0.0f;
+        if (adj > 5.0f) adj = 5.0f;
+        data->turbidityC2 = adj;
+    }
     lastVoltageC2 = readPhAvgMv(PH_C2_PIN);
     if (!emaInitDone) emaMvC2 = lastVoltageC2;
     emaMvC2 = PH_EMA_ALPHA * lastVoltageC2 + (1.0f - PH_EMA_ALPHA) * emaMvC2;
     data->rawMvC2 = lastVoltageC2;
     data->phC2    = cal_applyPH(0, emaMvC2, data->tempC2);
 
-    { float v = sensors_readTurbVoltage(TURB_C5_PIN); data->rawTurbVC5 = v; data->turbidityC5 = cal_applyTurb(1, v); }
+    {
+        float v = sensors_readTurbVoltage(TURB_C5_PIN);
+        data->rawTurbVC5 = v;
+        float adj = v - (calData.turb[1].zeroV - 4.1f);
+        if (adj < 0.0f) adj = 0.0f;
+        if (adj > 5.0f) adj = 5.0f;
+        data->turbidityC5 = adj;
+    }
     lastVoltageC5 = readPhAvgMv(PH_C5_PIN);
     if (!emaInitDone) emaMvC5 = lastVoltageC5;
     emaMvC5 = PH_EMA_ALPHA * lastVoltageC5 + (1.0f - PH_EMA_ALPHA) * emaMvC5;
     data->rawMvC5 = lastVoltageC5;
     data->phC5    = cal_applyPH(1, emaMvC5, data->tempC5);
 
-    { float v = sensors_readTurbVoltage(TURB_C6_PIN); data->rawTurbVC6 = v; data->turbidityC6 = cal_applyTurb(2, v); }
+    {
+        float v = sensors_readTurbVoltage(TURB_C6_PIN);
+        data->rawTurbVC6 = v;
+        float adj = v - (calData.turb[2].zeroV - 4.1f);
+        if (adj < 0.0f) adj = 0.0f;
+        if (adj > 5.0f) adj = 5.0f;
+        data->turbidityC6 = adj;
+    }
     lastVoltageC6 = readPhAvgMv(PH_C6_PIN);
     if (!emaInitDone) emaMvC6 = lastVoltageC6;
     emaMvC6 = PH_EMA_ALPHA * lastVoltageC6 + (1.0f - PH_EMA_ALPHA) * emaMvC6;

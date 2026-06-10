@@ -188,19 +188,19 @@ void comms_sendData(const SensorData* data,
     sendLine("TEMP_C2",     data->tempC2,         1);
     sendLine("TEMP_DEV_C2", data->tempDevicesC2,  0);
     sendLine("PH_C2",       data->phC2,           2);
-    sendLine("TURB_C2",     data->turbidityC2,    1);
+    sendLine("TURB_C2",     data->turbidityC2,    3);
     sendLine("LVL_C3",      data->levelC3,        1);
     sendLine("LVL_C4",      data->levelC4,        1);
     sendLine("LVL_C5",      data->levelC5,        1);
     sendLine("TEMP_C5",     data->tempC5,         1);
     sendLine("TEMP_DEV_C5", data->tempDevicesC5,  0);
     sendLine("PH_C5",       data->phC5,           2);
-    sendLine("TURB_C5",     data->turbidityC5,    1);
+    sendLine("TURB_C5",     data->turbidityC5,    3);
     sendLine("LVL_C6",      data->levelC6,        1);
     sendLine("TEMP_C6",     data->tempC6,         1);
     sendLine("TEMP_DEV_C6", data->tempDevicesC6,  0);
     sendLine("PH_C6",       data->phC6,           2);
-    sendLine("TURB_C6",     data->turbidityC6,    1);
+    sendLine("TURB_C6",     data->turbidityC6,    3);
 
     // ── Raw (pre-calibration) values — used by the calibration dashboard
     sendLine("RAW_DIST_C2",   data->rawDistC2,   1);
@@ -505,6 +505,14 @@ static void processCommand(const char* cmd)
         float volt = sensors_readTurbVoltage(turbPins[idx]);
 
         if (strncmp(point, "ZERO", 4) == 0) {
+            // Reject implausibly low voltage — a TSD-10 in clean water never reads
+            // below ~3V. Values this low indicate turbid water, a disconnected sensor,
+            // or wiring fault. Storing them as zeroV would make clean water always
+            // appear to pass (adjusted voltage would be inflated above the threshold).
+            if (volt < 3.0f) {
+                sendAck("CAL_ERROR,TURB,LOW_VOLTAGE");
+                return;
+            }
             calData.turb[idx].zeroV = volt;
             cal_save();
             char ack[48];

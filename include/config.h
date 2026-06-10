@@ -107,9 +107,15 @@
 
 #define WQ_PH_MIN              6.5f  // Minimum acceptable pH
 #define WQ_PH_MAX              8.5f  // Maximum acceptable pH
-#define WQ_TURBIDITY_MAX_NTU   5.0f  // Maximum turbidity (NTU)
-// NOTE: WHO recommends < 1 NTU for effective disinfection.  If you add
-//       a UV or chlorine stage downstream, tighten this to 1.0 NTU.
+#define WQ_TURBIDITY_MAX_NTU   5.0f  // NTU limit — retained for span calibration reference
+
+// Adjusted-voltage turbidity thresholds (used by pipeline_isWaterPotable).
+// The adjusted-voltage formula maps each sensor's clean-water voltage to a
+// common 4.1V anchor: adjusted = raw - (zeroV - 4.1).
+// Clean water always reads ~4.1V adjusted after ZERO calibration.
+// The 0.3V guard equals the sensor's documented ±0.3V drift tolerance.
+#define WQ_TURBIDITY_ZERO_ANCHOR  4.1f   // V — clean-water anchor (formula output at zero point)
+#define WQ_TURBIDITY_MIN_ADJ_V    3.8f   // V — adjusted voltage must be >= this to pass (4.1 - 0.3)
 
 // Temperature isn't directly regulated by PNSDW, but extreme readings
 // indicate a sensor fault or unusual condition worth flagging.

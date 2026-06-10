@@ -369,14 +369,14 @@ static void stage_container5(const SensorData* data)
     if (c5WasEmpty && !firstFlush_isCalMode()) {
         c5WasEmpty = false;
         bool phOK   = (data->phC5 >= WQ_PH_MIN) && (data->phC5 <= WQ_PH_MAX);
-        bool turbOK = (data->turbidityC5 <= WQ_TURBIDITY_MAX_NTU);
+        bool turbOK = (data->turbidityC5 >= WQ_TURBIDITY_MIN_ADJ_V);
         if (!phOK) {
             logEvent(LOG_WARNING, LOG_CAT_SENSOR,
                      String("pH out of range on C5 fill: ") + String(data->phC5, 2));
         }
         if (!turbOK) {
             logEvent(LOG_WARNING, LOG_CAT_SENSOR,
-                     String("Turbidity out of range on C5 fill: ") + String(data->turbidityC5, 1));
+                     String("Turbidity out of range on C5 fill: ") + String(data->turbidityC5, 3));
         }
     } else {
         c5WasEmpty = false;
@@ -743,7 +743,7 @@ bool pipeline_isWaterPotable(const SensorData* data)
      */
 
     bool phOK   = (data->phC5 >= WQ_PH_MIN) && (data->phC5 <= WQ_PH_MAX);
-    bool turbOK = (data->turbidityC5 <= WQ_TURBIDITY_MAX_NTU);
+    bool turbOK = (data->turbidityC5 >= WQ_TURBIDITY_MIN_ADJ_V);
     bool tempOK = (data->tempC5 >= WQ_TEMP_MIN_C) && (data->tempC5 <= WQ_TEMP_MAX_C);
 
     // Uncomment during development to see every quality evaluation:
