@@ -369,12 +369,16 @@ static void stage_container5(const SensorData* data)
     if (c5WasEmpty && !firstFlush_isCalMode()) {
         c5WasEmpty = false;
         bool phOK   = (data->phC5 >= WQ_PH_MIN) && (data->phC5 <= WQ_PH_MAX);
-        bool turbOK = (data->turbidityC5 >= WQ_TURBIDITY_MIN_ADJ_V);
+        bool turbFault = (data->rawTurbVC5 < calData.turbFaultFloorV[1]);
+        bool turbOK    = !turbFault && (data->turbidityC5 >= WQ_TURBIDITY_MIN_ADJ_V);
         if (!phOK) {
             logEvent(LOG_WARNING, LOG_CAT_SENSOR,
                      String("pH out of range on C5 fill: ") + String(data->phC5, 2));
         }
-        if (!turbOK) {
+        if (turbFault) {
+            logEvent(LOG_ERROR, LOG_CAT_SENSOR,
+                     String("C5 turbidity sensor fault — raw voltage below floor: ") + String(data->rawTurbVC5, 3) + "V");
+        } else if (!turbOK) {
             logEvent(LOG_WARNING, LOG_CAT_SENSOR,
                      String("Turbidity out of range on C5 fill: ") + String(data->turbidityC5, 3));
         }
@@ -743,8 +747,20 @@ bool pipeline_isWaterPotable(const SensorData* data)
      */
 
     bool phOK   = (data->phC5 >= WQ_PH_MIN) && (data->phC5 <= WQ_PH_MAX);
-    bool turbOK = (data->turbidityC5 >= WQ_TURBIDITY_MIN_ADJ_V);
     bool tempOK = (data->tempC5 >= WQ_TEMP_MIN_C) && (data->tempC5 <= WQ_TEMP_MAX_C);
+
+    // Fault floor check: if raw voltage is below the configured floor the sensor
+    // is likely disconnected or in air — treat as a sensor fault, not turbid water.
+    // This prevents a broken C5 turbidity sensor from locking the pipeline into
+    // perpetual recirculation.
+    if (data->rawTurbVC5 < calData.turbFaultFloorV[1]) {
+        logEvent(LOG_ERROR, LOG_CAT_SENSOR,
+                 String("C5 turbidity sensor fault — raw ") + String(data->rawTurbVC5, 3) + "V < floor "
+                 + String(calData.turbFaultFloorV[1], 3) + "V — quality eval held");
+        return false;
+    }
+
+    bool turbOK = (data->turbidityC5 >= WQ_TURBIDITY_MIN_ADJ_V);
 
     // Uncomment during development to see every quality evaluation:
     // Serial.print(F("[Quality] pH="));    Serial.print(data->phC5, 2);

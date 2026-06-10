@@ -65,6 +65,10 @@ static const CalibrationData DEFAULTS = {
 
     // calMode — default OFF on first flash
     .calMode = false,
+
+    // turbFaultFloorV — 0.5V is below any plausible in-water TSD-10 reading
+    // but above the open-circuit / disconnected noise floor (~0V)
+    .turbFaultFloorV = { 0.5f, 0.5f, 0.5f },
 };
 
 // ═════════════════════════════════════════════════════════════════════════
@@ -139,6 +143,13 @@ void cal_init()
     if (magic == EEPROM_MAGIC) {
         EEPROM.get(EEPROM_MAGIC_ADDR + 2, calData);
         Serial.println(F("[Cal] Loaded calibration from EEPROM"));
+        // Guard against uninitialized EEPROM bytes in the turbFaultFloorV region
+        // (new field appended to existing layout — those bytes may be 0xFF on first load).
+        for (uint8_t i = 0; i < CAL_QTY_SENSORS; i++) {
+            if (calData.turbFaultFloorV[i] < 0.0f || calData.turbFaultFloorV[i] > 2.0f) {
+                calData.turbFaultFloorV[i] = DEFAULTS.turbFaultFloorV[i];
+            }
+        }
     } else {
         // First boot — EEPROM has never been written
         Serial.println(F("[Cal] No EEPROM data found — loading defaults"));

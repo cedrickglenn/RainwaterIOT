@@ -542,6 +542,31 @@ static void processCommand(const char* cmd)
             sendAck("CAL_ERROR,TURB,BAD_POINT");
         }
     }
+    else if (strncmp(payload, "CAL_TURB_FAULT,", 15) == 0)
+    {
+        char buf[32];
+        strncpy(buf, payload + 15, sizeof(buf) - 1);
+        char* container = strtok(buf, ",");
+        char* valStr    = strtok(nullptr, ",");
+        if (!container || !valStr) return;
+
+        int8_t idx = containerToQualIdx(container);
+        if (idx < 0) { sendAck("CAL_ERROR,TURB_FAULT,BAD_CONTAINER"); return; }
+
+        float floor = atof(valStr);
+        if (floor < 0.0f || floor > 2.0f) {
+            sendAck("CAL_ERROR,TURB_FAULT,OUT_OF_RANGE");
+            return;
+        }
+
+        calData.turbFaultFloorV[idx] = floor;
+        cal_save();
+        char ack[56];
+        snprintf(ack, sizeof(ack), "CAL_TURB_FAULT,%s,OK,%.3f", container, floor);
+        sendAck(ack);
+        logEvent(LOG_INFO, LOG_CAT_CALIBRATION,
+                 String("CAL_TURB_FAULT,") + container + " set to " + String(floor, 3) + "V");
+    }
     else if (strncmp(payload, "CAL_LVL,", 8) == 0)
     {
         char buf[32];

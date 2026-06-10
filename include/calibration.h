@@ -12,7 +12,7 @@
  *  is received.  A magic number (0xCAFE) at address 0x0000 tells us whether
  *  the EEPROM has ever been written — if not, safe defaults are used.
  *
- *  EEPROM LAYOUT (106 bytes total, well within Mega's 4 KB):
+ *  EEPROM LAYOUT (118 bytes total, well within Mega's 4 KB):
  *
  *    Addr    Size  Contents
  *    0x0000    2   Magic number (0xCAFE)
@@ -31,8 +31,11 @@
  *    0x005E    4   Temp offset C5
  *    0x0062    4   Temp offset C6
  *    0x0066    4   Flow pulsesPerLiter (float)
+ *    0x006A    4   Turbidity fault floor C2 (float) — raw voltage below which sensor is considered faulty
+ *    0x006E    4   Turbidity fault floor C5
+ *    0x0072    4   Turbidity fault floor C6
  *    ─────────────────────────────────────────
- *              106 bytes total
+ *              118 bytes total
  *
  *  CONTAINER INDEX CONVENTION (used throughout this module):
  *    pH / Turbidity / Temp arrays:  0 = C2,  1 = C5,  2 = C6
@@ -45,7 +48,7 @@
 #include <EEPROM.h>
 
 // ── EEPROM magic ─────────────────────────────────────────────────────────
-#define EEPROM_MAGIC        0xCAFD  // bumped — forces EEPROM reset after struct change (added calMode)
+#define EEPROM_MAGIC        0xCAFD  // unchanged — turbFaultFloorV appended at end, existing offsets unaffected
 #define EEPROM_MAGIC_ADDR   0x0000
 
 // ── Sensor count constants ────────────────────────────────────────────────
@@ -78,6 +81,8 @@ struct CalibrationData {
     float        tempOffset[CAL_QTY_SENSORS]; // °C offset: [0]=C2 [1]=C5 [2]=C6
     float        flowPPL;                // Flow sensor pulses-per-litre
     bool         calMode;                // Persisted calibration mode — restored on reboot
+    float        turbFaultFloorV[CAL_QTY_SENSORS]; // Raw voltage below which sensor is considered faulty, not turbid
+                                                   // [0]=C2  [1]=C5  [2]=C6 — default 0.5V
 };
 
 // ── Global calibration data (defined in calibration.cpp) ─────────────────
